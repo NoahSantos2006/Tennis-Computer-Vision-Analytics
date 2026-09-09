@@ -1,0 +1,6 @@
+ultralytics==8.4.87
+yt-dlp==2026.7.4
+ffmpeg==1.4
+inference_sdk==1.3.7
+aiortc==1.15.0
+dotenv==0.9.9

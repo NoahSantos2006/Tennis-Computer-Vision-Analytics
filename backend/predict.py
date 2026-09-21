@@ -20,9 +20,9 @@ import time
 
 import threading
 
-from scripts.side_functions import run_predictions, get_bounces
-from scripts.ball_tracker import BallTracker
-from scripts.status import update_status
+from backend.scripts.side_functions import run_predictions, get_bounces
+from backend.scripts.ball_tracker import BallTracker
+from backend.scripts.status import update_status
 
 load_dotenv()
 

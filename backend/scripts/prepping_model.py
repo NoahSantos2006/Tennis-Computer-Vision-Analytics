@@ -6,7 +6,7 @@ import os
 from pathlib import Path
 import json
 
-from scripts.ball_tracker import BallTracker
+from backend.scripts.ball_tracker import BallTracker
 
 def get_training_dataframe(
     ball_tracker: dict,

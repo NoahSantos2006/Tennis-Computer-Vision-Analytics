@@ -9,8 +9,10 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from xgboost import XGBClassifier
 from tqdm import tqdm
-from scripts.ball_tracker import BallTracker
-from scripts.status import update_status
+
+
+from backend.scripts.ball_tracker import BallTracker
+from backend.scripts.status import update_status
 
 BASE_DIR = Path(__file__).parent.parent
 

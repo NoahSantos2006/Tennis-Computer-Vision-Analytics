@@ -4,13 +4,13 @@ from fastapi.responses import FileResponse
 
 from pathlib import Path
 import shutil
-from predict import analyze_video
 import json
 import os
 
 from uuid import uuid4
 
-from scripts.status import status_lock
+from backend.predict import analyze_video
+from backend.scripts.status import status_lock
 
 app = FastAPI()
 

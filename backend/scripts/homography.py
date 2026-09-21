@@ -12,8 +12,8 @@ from xgboost import XGBClassifier
 
 BASE_DIR = Path(__file__).parent.parent
 
-from scripts.ball_tracker import BallTracker
-from scripts.side_functions import get_coordinates_and_center, ball_near_player, classify_bounce
+from backend.scripts.ball_tracker import BallTracker
+from backend.scripts.side_functions import get_coordinates_and_center, ball_near_player, classify_bounce
 
 TENNIS_COURT_LENGTH = 23.77
 TENNIS_COURT_WIDTH = 10.97

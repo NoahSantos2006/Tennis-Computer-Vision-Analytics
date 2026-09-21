@@ -379,7 +379,7 @@ def analyze_video(
     vision_model_id=12,
 ) -> tuple:
 
-    API_KEY = os.getenv("API_KEY")
+    ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")
 
     STATUS_PATH = OUTPUT_PATH / "status.json"
 
@@ -435,7 +435,7 @@ def analyze_video(
         OUTPUT_DIR=OUTPUT_PATH,
         MODEL_PATH=MODEL_PATH,
         STATUS_PATH=STATUS_PATH,
-        api_key=API_KEY, 
+        api_key=ROBOFLOW_API_KEY, 
         vision_model_id=vision_model_id, 
     )
 

@@ -2,12 +2,79 @@ import numpy as np
 import cv2
 import sys
 import os
+import json
+from pathlib import Path
+
+COURT_HEIGHT = 44
+COURT_WIDTH = 20
+PICKLEBALL_COURT_SCALE = 20
+PICKLEBALL_COURT_PADDING = 50
+
+TENNIS_COURT_LENGTH = 23.77
+TENNIS_COURT_WIDTH = 10.97
+TENNIS_COURT_SCALE = 25
+TENNIS_COURT_PADDING = 30
+
+
+def compute_homography(COURT_POINTS_PATH: Path, frame_id: int) -> np.array:
+
+    court_points = []
+
+    with open(COURT_POINTS_PATH, "r") as f:
+        
+        video_points = json.load(f)
+        video_points = {int(k): v for k, v in video_points.items()}
+
+
+    top_down_points = np.array([
+        [TENNIS_COURT_PADDING, TENNIS_COURT_PADDING + 23.77 * TENNIS_COURT_SCALE],                              # 1 - near left doubles baseline
+        [TENNIS_COURT_PADDING + 1.37 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 23.77 * TENNIS_COURT_SCALE],  # 2 - near left singles baseline
+        [TENNIS_COURT_PADDING + 9.60 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 23.77 * TENNIS_COURT_SCALE],  # 3 - near right singles baseline
+        [TENNIS_COURT_PADDING + 10.97 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 23.77 * TENNIS_COURT_SCALE], # 4 - near right doubles baseline
+        [TENNIS_COURT_PADDING + 10.97 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING],                              # 5 - far right doubles baseline
+        [TENNIS_COURT_PADDING + 9.60 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING],                               # 6 - far right singles baseline
+        [TENNIS_COURT_PADDING + 1.37 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING],                               # 7 - far left singles baseline
+        [TENNIS_COURT_PADDING, TENNIS_COURT_PADDING],                                                           # 8 - far left doubles baseline
+        [TENNIS_COURT_PADDING + 1.37 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 18.285 * TENNIS_COURT_SCALE], # 9 - near left service line
+        [TENNIS_COURT_PADDING + 1.37 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 5.485 * TENNIS_COURT_SCALE],  # 10 - far left service line
+        [TENNIS_COURT_PADDING + 9.60 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 18.285 * TENNIS_COURT_SCALE], # 11 - near right service line
+        [TENNIS_COURT_PADDING + 9.60 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 5.485 * TENNIS_COURT_SCALE],  # 12 - far right service line
+        [TENNIS_COURT_PADDING + 5.485 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 18.285 * TENNIS_COURT_SCALE],# 13 - near centre service line
+        [TENNIS_COURT_PADDING + 5.485 * TENNIS_COURT_SCALE, TENNIS_COURT_PADDING + 5.485 * TENNIS_COURT_SCALE]],# 14 - far centre service line
+        dtype=np.float32
+    )
+
+    current_court_points = video_points.get(frame_id, [])
+    if not current_court_points:
+
+        return []
+
+    for keypoint_detection_dict in current_court_points:
+    
+        curr_x = keypoint_detection_dict['x']
+        curr_y = keypoint_detection_dict['y']
+
+        court_points.append((curr_x, curr_y))
+                
+    court_points = np.array(court_points, dtype=np.float32)
+    
+    H, mask = cv2.findHomography(
+        court_points,
+        top_down_points,
+        method=cv2.RANSAC,
+        ransacReprojThreshold=3.0
+    )
+
+    if H is None: raise RuntimeError("Homography could not be computed")
+
+    # Homography Matrix
+    return H
 
 class BallTracker:
 
     def __init__(
             self, 
-            homography_matrix,
+            COURT_POINTS_FILE,
             max_consecutive_predictions=30, 
             max_displacement_px=300, 
             max_false_positive_count=15, 
@@ -15,7 +82,21 @@ class BallTracker:
             false_positives=set()
         ):
 
-        self.HOMOGRAPHY_MATRIX = homography_matrix                      # homography matrix
+        
+
+        with open(COURT_POINTS_FILE, "r") as file:
+
+            court_points = json.load(file)
+
+        self.court_points = {int(k): v for k, v in court_points.items()}
+
+        self.COURT_POINTS_FILE = COURT_POINTS_FILE
+
+        self.HOMOGRAPHY_MATRIX = compute_homography(COURT_POINTS_PATH=COURT_POINTS_FILE, frame_id=1)
+        if len(self.HOMOGRAPHY_MATRIX) == 0:
+
+            raise Exception(f"Could not find court points for first frame: CHECK {COURT_POINTS_FILE}")
+
         self.MAX_CONSECUTIVE_ESTIMATIONS = max_consecutive_predictions  # max number of estimations the tracker has before going back and checking the locations again
         self.MAX_CONSECUTIVE_ESTIMATIONS_PADDING = 30                   # when looking through the frames for an estimation error it goes back this any frames
         self.MAX_ESTIMATIONS_IN_REDO = 20                                # when creating the new ball tracker there can be this amount of estimations before we realize we just lost the ball
@@ -74,12 +155,10 @@ class BallTracker:
             # start frame is our current frame number - the max estimations so ex: (Frame 650 - 30 = 620)
             start_frame, i = frame_id - self.MAX_CONSECUTIVE_ESTIMATIONS, 1
             temp_ball_tracker = BallTracker(
-                homography_matrix=self.HOMOGRAPHY_MATRIX, 
-                false_positives=self.false_positives
+                COURT_POINTS_FILE=self.COURT_POINTS_FILE,
             )
 
 
-            # print(f"Creating a new ball tracker for frames {start_frame} - {frame_id}")
             while start_frame < frame_id:
 
                 temp_ball_tracker.update(
@@ -242,6 +321,10 @@ class BallTracker:
         nearest_ball_location = {}
         prediction_indices = {}
 
+        if frame_id in self.court_points:
+
+            self.HOMOGRAPHY_MATRIX = compute_homography(COURT_POINTS_PATH=self.COURT_POINTS_FILE, frame_id=frame_id)
+
         if len(ball_locations) == 0:
 
             if allow_estimation:
@@ -401,7 +484,6 @@ class BallTracker:
         if self.no_location_found == True: self.fix_no_detections(last_frame=frame_id)
         if not self.tracker[frame_id]['estimation']: self.interpolate_estimations(frame_id=frame_id)
 
-        # print(f"------------------")
 
         return self.is_estimation
 

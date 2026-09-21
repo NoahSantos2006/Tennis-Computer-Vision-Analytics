@@ -1,0 +1,27 @@
+# Python
+.venv/
+__pycache__/
+
+# Node / React
+node_modules/
+dist/
+
+# Temporary video processing
+compilation/
+input/
+output/
+storage/jobs/
+
+# Temporary/download files
+*.part
+
+# Environment variables / secrets
+.env
+.env.*
+
+# Images you don't want tracked
+*.jpg
+
+# Local files
+TODO.txt
+downloading_videos.txt

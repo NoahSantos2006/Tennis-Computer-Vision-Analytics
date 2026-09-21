@@ -1,7 +1,7 @@
 import React from "react";
 
 import tennis_ball from "./images/tennis_ball.svg"
-import tennis_racket from "./images/Tennis_racket.svg"
+import tennis_racket from "./images/tennis_racket.svg"
 
 function TennisCourt({ 
   bounces_dict = {},

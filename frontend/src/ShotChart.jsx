@@ -3,6 +3,8 @@ import "./ShotChart.css";
 import TennisCourt from "./TennisCourt";
 import { Navigate, useLocation, useNavigate } from "react-router-dom";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function ShotChart() {
 
     useEffect(() => {
@@ -182,7 +184,7 @@ function ShotChart() {
                                 controls
                             >
                                 <source
-                                    src={`http://localhost:8000/video/${job_id}/${video_filename}`}
+                                    src={`${API_URL}/video/${job_id}/${video_filename}`}
                                     type="video/mp4"
                                 />
                             </video>

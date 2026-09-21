@@ -4,6 +4,8 @@ import { Navigate, useNavigate } from "react-router-dom";
 import Header from "./header";
 import ProcessingVideo from "./ProcessingVideo";
 
+const API_URL = import.meta.env.VITE_API_URL;
+
 function VideoUpload() {
 
     const navigate = useNavigate()
@@ -25,7 +27,7 @@ function VideoUpload() {
         const interval = setInterval(async () => {
 
             const response = await fetch(
-                `http://localhost:8000/jobs/${jobId}/status`
+                `${API_URL}/jobs/${jobId}/status`
             )
 
             const data = await response.json();
@@ -41,7 +43,7 @@ function VideoUpload() {
                 clearInterval(interval)
 
                 const resultsResponse = await fetch(
-                    `http://localhost:8000/jobs/${jobId}/results`
+                    `${API_URL}/jobs/${jobId}/results`
                 )
 
                 const resultsData = await resultsResponse.json()
@@ -81,7 +83,7 @@ function VideoUpload() {
 
             setIsAnalyzing(true)
 
-            const response = await fetch("http://localhost:8000/analyze", {
+            const response = await fetch("${API_URL}/analyze", {
                 method: "POST",
                 body: formData,
             });

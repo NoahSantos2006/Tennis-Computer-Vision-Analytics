@@ -83,7 +83,7 @@ function VideoUpload() {
 
             setIsAnalyzing(true)
 
-            const response = await fetch("${API_URL}/analyze", {
+            const response = await fetch(`${API_URL}/analyze`, {
                 method: "POST",
                 body: formData,
             });
@@ -97,6 +97,8 @@ function VideoUpload() {
             setJobId(data['job id'])
 
         } catch (error) {
+
+            setIsAnalyzing(false)
             console.error("Error uploading video:", error)
         }
 

@@ -1,10 +1,7 @@
 import cv2
 import json
 from inference_sdk import InferenceHTTPClient
-from inference_sdk.webrtc import VideoFileSource, StreamConfig, VideoMetadata
-from ultralytics import YOLO
 import json
-import supervision as sv
 import numpy as np
 from pathlib import Path
 import pickle
@@ -12,13 +9,13 @@ from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import xgboost as xgb
-from xgboost import XGBClassifier
 
 from dotenv import load_dotenv
 import os
 import time
 
 import threading
+import psutil
 
 from backend.scripts.side_functions import run_predictions, get_bounces
 from backend.scripts.ball_tracker import BallTracker
@@ -28,8 +25,12 @@ load_dotenv()
 
 import json
 
+def print_memory(label):
+    process = psutil.Process(os.getpid())
+    memory_mb = process.memory_info().rss / (1024 * 1024)
+    print(f"[MEMORY] {label}: {memory_mb:.1f} MB")
 
-def predict_with_threads(
+def predict_without_threads(
         video_path: Path,
         OUTPUT_DIR: Path,
         MODEL_PATH: Path, 
@@ -43,6 +44,8 @@ def predict_with_threads(
     parts = video_path.parts
 
     VIDEO_FILENAME = parts[-1].split(".")[0].split("_")[0]
+
+    print_memory("before loading video")
 
     # example: input/make/dunk/make4.mp4
     INPUT_VIDEO = str(video_path)
@@ -71,7 +74,6 @@ def predict_with_threads(
     def predict_frame(
         frame_id: int, 
         frame: np.array, 
-        total_frames: int
     ) -> tuple:
 
         if frame_id == 1 or frame_id % 50 == 0:
@@ -106,6 +108,8 @@ def predict_with_threads(
                 court_detection_points_by_frame[frame_id] = court_detection_points      
 
         return frame_id, result
+
+    print_memory("after loading video")
 
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
 
@@ -148,6 +152,8 @@ def predict_with_threads(
                 current_frame=completed_frames // 2,
                 total_frames=total_frames
             )
+
+    print_memory("after validation")
 
     out = cv2.VideoWriter(
         OUTPUT_VIDEO,
@@ -233,13 +239,15 @@ def predict_with_threads(
 
         frame_id += 1
 
+    print_memory("after processing frames")
+
     PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"
     if not os.path.isdir(PREDICTIONS_DIRECTORY):
         os.makedirs(PREDICTIONS_DIRECTORY, exist_ok=True)
     predictions_text_path = f"{OUTPUT_DIR}/predictions/{VIDEO_FILENAME}_predictions.txt"
     with open(predictions_text_path, "w") as f:
 
-        json.dump(predictions_by_frame, f, indent=4)
+        json.dump(predictions_by_frame, f)
 
     COURT_POINTS_DIRECTORY = OUTPUT_DIR / "court_points"
     if not os.path.isdir(COURT_POINTS_DIRECTORY):
@@ -247,7 +255,7 @@ def predict_with_threads(
     court_points_path = f"{OUTPUT_DIR}/court_points/{VIDEO_FILENAME}_court_points.json"    
     with open(court_points_path, "w") as f:
 
-        json.dump(court_detection_points_by_frame, f, indent=4)
+        json.dump(court_detection_points_by_frame, f)
 
     cap.release()
     out.release()
@@ -267,7 +275,7 @@ def predict_with_threads(
 
     with open(BALL_TRACKER_FILE, "w") as f:
 
-        json.dump(ball_tracker.tracker, f, indent=4)
+        json.dump(ball_tracker.tracker, f)
 
     with open(BALL_TRACKER_CLASS_FILE, "rb") as f:
 
@@ -293,12 +301,286 @@ def predict_with_threads(
 
     return bounce_detection_dict, fps
 
+def predict_with_threads(
+        video_path: Path,
+        OUTPUT_DIR: Path,
+        MODEL_PATH: Path, 
+        STATUS_PATH: Path,
+        api_key: str,
+        vision_model_id: int = 12,
+        MAX_WORKERS: int = 4,
+        PLAYER_CONFIDENCE_THRESHOLD: float = 0.8,
+    ) -> dict:
+    
+    parts = video_path.parts
+
+    VIDEO_FILENAME = parts[-1].split(".")[0].split("_")[0]
+
+    print_memory("before loading video")
+
+    # example: input/make/dunk/make4.mp4
+    INPUT_VIDEO = str(video_path)
+
+    OUTPUT_VIDEO = f"{OUTPUT_DIR}/annotated_videos/{VIDEO_FILENAME}_annotated.mp4"
+
+    cap = cv2.VideoCapture(INPUT_VIDEO)
+    if not cap.isOpened():
+        print(f"Could not open video {INPUT_VIDEO}")
+        os._exit(1)
+    
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+
+    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+
+    client = InferenceHTTPClient.init(
+        api_url="https://serverless.roboflow.com",
+        api_key=api_key
+    )
+
+    court_detection_points_by_frame = {}
+    predictions_by_frame = {}
+
+    def predict_frame(
+        frame_id: int, 
+        frame: np.array, 
+        total_frames: int
+    ) -> tuple:
+
+        if frame_id == 1 or frame_id % 50 == 0:
+
+            data = client.run_workflow(
+                workflow_id=f"tennis-object-detection-model-{vision_model_id}-with-court-points",
+                workspace_name="noahs-workspace-kg24g",
+                images={"image": frame},
+            )[0]
+
+        else:
+
+            data = client.run_workflow(
+                workflow_id=f"tennis-object-detection-model-{vision_model_id}",
+                workspace_name="noahs-workspace-kg24g",
+                images={"image": frame},
+            )[0]
+        
+        if not data:
+
+            print(f"Could not find data on frame {frame_id}.")
+            os._exit(1)
+
+        result = data.get("predictions", {}).get("predictions", [])
+
+        court_detection_data = data.get("court_detection_predictions", {})
+        if court_detection_data:
+
+            if court_detection_data.get("predictions", []):
+
+                court_detection_points = court_detection_data.get('predictions', [])[0].get("keypoints", [])
+                court_detection_points_by_frame[frame_id] = court_detection_points      
+
+        return frame_id, result
+
+    print_memory("after loading video")
+
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+
+        futures = []
+        frame_id = 1
+
+        while True:
+
+            ret, frame = cap.read()
+            if not ret:
+                break
+
+            future = executor.submit(
+                predict_frame,
+                frame_id=frame_id,
+                frame=frame.copy(),
+                total_frames=total_frames
+            )
+
+            futures.append(future)
+
+            skip_frame = True
+
+            frame_id += 1
+
+        completed_frames = 0
+
+        for future in as_completed(futures):
+
+            frame_id, preds = future.result()
+
+            predictions_by_frame[frame_id] = preds
+
+            completed_frames += 1
+
+            update_status(
+                status_file=STATUS_PATH,
+                status="in progress",
+                stage="Processing Frames",
+                current_frame=completed_frames // 2,
+                total_frames=total_frames
+            )
+
+    print_memory("after validation")
+
+    out = cv2.VideoWriter(
+        OUTPUT_VIDEO,
+        cv2.VideoWriter_fourcc(*"mp4v"),
+        fps,
+        (width, height)
+    )
+
+    frame_id = 1
+
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+
+    while True:
+
+        ret, frame = cap.read()
+        if not ret:
+            break
+
+        cv2.putText(
+            frame,
+            f"Frame Number: {frame_id}",
+            (50, 50),
+            cv2.FONT_HERSHEY_SIMPLEX,   # font
+            1,                        # font size
+            (0, 255, 0),                # font color
+            3 
+        )
+
+        preds = predictions_by_frame.get(frame_id)
+
+        xyxy = []
+        confidences = []
+        class_ids = []
+
+        for pred in preds:
+
+            conf = pred['confidence']
+            class_name = pred['class']
+
+            if class_name == 'player' and conf < PLAYER_CONFIDENCE_THRESHOLD: continue
+
+            x = pred["x"]
+            y = pred["y"]
+            w = pred["width"]
+            h = pred["height"]
+
+            x1 = int(x - w / 2)
+            y1 = int(y - h / 2)
+            x2 = int(x + w / 2)
+            y2 = int(y + h / 2)
+
+            player_box = [x1, y1, x2, y2]
+            pred['box'] = [x1, y1, x2, y2]
+
+            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
+
+            xyxy.append(player_box)
+            confidences.append(pred['confidence'])
+            class_ids.append(pred['class_id'])
+
+            if class_name == "ball": label = f"{class_name} {conf:.2f} ({x}, {y})"
+            else: label = f"{class_name} ({conf}) ({x}, {y})"
+            
+            cv2.putText(
+                frame,                      # image we're drawing on
+                label,                      # text that will be displayed
+                (x1, max(y1 - 10, 20)),     # bottom left corner of the text
+                cv2.FONT_HERSHEY_SIMPLEX,   # font
+                1,                        # font size
+                (0, 255, 0),                # font color
+                2                           # font thickness
+            )
+
+        out.write(frame)
+
+        update_status(
+            status_file=STATUS_PATH,
+            status="in progress",
+            stage="Processing Frames",
+            current_frame=(completed_frames + frame_id) // 2,
+            total_frames=total_frames
+        )
+
+        frame_id += 1
+
+    print_memory("after processing frames")
+
+    PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"
+    if not os.path.isdir(PREDICTIONS_DIRECTORY):
+        os.makedirs(PREDICTIONS_DIRECTORY, exist_ok=True)
+    predictions_text_path = f"{OUTPUT_DIR}/predictions/{VIDEO_FILENAME}_predictions.txt"
+    with open(predictions_text_path, "w") as f:
+
+        json.dump(predictions_by_frame, f)
+
+    COURT_POINTS_DIRECTORY = OUTPUT_DIR / "court_points"
+    if not os.path.isdir(COURT_POINTS_DIRECTORY):
+        os.makedirs(COURT_POINTS_DIRECTORY, exist_ok=True)
+    court_points_path = f"{OUTPUT_DIR}/court_points/{VIDEO_FILENAME}_court_points.json"    
+    with open(court_points_path, "w") as f:
+
+        json.dump(court_detection_points_by_frame, f)
+
+    cap.release()
+    out.release()
+
+    BALL_TRACKER_CLASS_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking_class.pkl")
+    BALL_TRACKER_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking.json")
+
+    predictions_by_frame, ball_tracker = run_predictions(
+        COURT_POINTS_INPUT_FILE=court_points_path, 
+        PREDICTIONS_INPUT_FILE=predictions_text_path, 
+        ball_tracker=BallTracker(COURT_POINTS_FILE=court_points_path)
+    )
+
+    with open(BALL_TRACKER_CLASS_FILE, "wb") as f:
+
+        pickle.dump(ball_tracker, f)
+
+    with open(BALL_TRACKER_FILE, "w") as f:
+
+        json.dump(ball_tracker.tracker, f)
+
+    with open(BALL_TRACKER_CLASS_FILE, "rb") as f:
+
+        ball_tracker = pickle.load(f)
+
+    XGBoost_model = xgb.XGBClassifier()
+    XGBoost_model.load_model(MODEL_PATH)
+
+    bounce_detection_dict = get_bounces(
+        ball_tracker_predictions=ball_tracker.tracker,
+        vision_model_predictions=predictions_by_frame,
+        XGBoost_model=XGBoost_model,
+        STATUS_PATH=STATUS_PATH
+    )
+
+    update_status(
+        status_file=STATUS_PATH,
+        status="finished",
+        stage="",
+        current_frame=total_frames,
+        total_frames=total_frames
+    )
+
+    print_memory("after XGBoost modelling")
+
+    return bounce_detection_dict, fps
+
 def validate_video(
     INPUT_PATH: Path,
     VIDEO_FILENAME: str,
     ALREADY_VALIDATED_PATH: Path,
     STATUS_PATH: Path,
-    mean_diff_threshold: float = 0.1
+    mean_diff_threshold: float = 0.1,
 ):
 
     VIDEO_PATH = os.path.join(INPUT_PATH, f"{VIDEO_FILENAME}.mp4")
@@ -450,40 +732,20 @@ def analyze_video(
     results_path = OUTPUT_PATH.parent / "results.json"
 
     with open(results_path, "w") as f:
-        json.dump(results, f, indent=4)
+        json.dump(results, f)
 
 if __name__ == "__main__":
 
     video_filename = f"pctennis16"
+    MODEL_PATH = os.path.join("models", "model.ubj")
 
-    BALL_TRACKER_CLASS_PATH = os.path.join("output", "BallTracking", video_filename, f"{video_filename}_ball_tracking_class.pkl")
-    PREDICTIONS_PATH = os.path.join("output", "predictions", f"{video_filename}_predictions.txt")
-    XGBOOST_MODEL_PATH = os.path.join("XGBoost", "model.ubj")
-
-    with open(BALL_TRACKER_CLASS_PATH, "rb") as f:
-
-        ball_tracker_class = pickle.load(f)
-
-    with open(PREDICTIONS_PATH, "r") as f:
-
-        predictions = json.load(f)
-
-    model = xgb.XGBClassifier()
-    model.load_model(XGBOOST_MODEL_PATH)
-    
-    ball_tracker_predictions = ball_tracker_class.tracker
-
-    bounce_detection_dict = get_bounces(
-        ball_tracker_predictions=ball_tracker_predictions,
-        vision_model_predictions=predictions,
-        XGBoost_model=model
+    analyze_video(
+        VIDEO_FILENAME=video_filename,
+        INPUT_PATH="input",
+        OUTPUT_PATH="output",
+        JOB_ID="47239814670123",
+        MODEL_PATH=MODEL_PATH,
     )
-
-    with open("testing.json", "w") as file:
-
-        json.dump(bounce_detection_dict, file, indent=4)
-
-    print(bounce_detection_dict)
 
     
 

@@ -1,6 +1,7 @@
 # Python
 .venv/
 __pycache__/
+testing.py
 
 # Node / React
 node_modules/
@@ -25,3 +26,4 @@ storage/jobs/
 # Local files
 TODO.txt
 downloading_videos.txt
+

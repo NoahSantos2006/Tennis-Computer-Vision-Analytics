@@ -411,13 +411,11 @@ def run_predictions(
         
     with open(PREDICTIONS_INPUT_FILE, "r") as f:
 
-        print(f"Opening {PREDICTIONS_INPUT_FILE}")
         predictions_by_frame = json.load(f)
         total_frames = len(predictions_by_frame)
 
     with open(COURT_POINTS_INPUT_FILE, "r") as f:
 
-        print(f"Opening {COURT_POINTS_INPUT_FILE}")
         court_points = json.load(f)
         court_points = {int(k): v for k, v in court_points.items()}
 
@@ -455,7 +453,6 @@ def run_predictions(
 
     with open(PREDICTIONS_INPUT_FILE, "w") as f:
     
-        print(f"Saving a new predictions file to {PREDICTIONS_INPUT_FILE}")
         json.dump(predictions_by_frame, f, indent=4)
 
     ball_tracker_class = find_angles(

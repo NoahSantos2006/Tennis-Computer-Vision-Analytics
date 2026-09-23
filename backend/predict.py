@@ -205,7 +205,7 @@ def predict_with_threads(
         STATUS_PATH: Path,
         api_key: str,
         vision_model_id: int = 12,
-        MAX_WORKERS: int = 8,
+        MAX_WORKERS: int = 9,
     ) -> dict:
     
     parts = video_path.parts

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react";
 import "./VideoUpload.css";
 import { Navigate, useNavigate } from "react-router-dom";
-import Header from "./header";
 import ProcessingVideo from "./ProcessingVideo";
 
 const API_URL = import.meta.env.VITE_API_URL;

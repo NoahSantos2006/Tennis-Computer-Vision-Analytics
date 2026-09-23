@@ -2,6 +2,7 @@
 .venv/
 __pycache__/
 testing.py
+print_memory.py
 
 # Node / React
 node_modules/

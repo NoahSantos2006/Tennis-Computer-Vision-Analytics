@@ -3,8 +3,6 @@ import "./ProcessingVideo.css";
 
 function ProcessingVideo({ status = null, progress = 0, currentFrame = 0, totalFrames = 0, stage = null}) {
 
-    let phases = ['validating', 'processing', 'detecting bounces and hits']
-
     // 0 = not started
     // 1 = in progress
     // 2 = finished

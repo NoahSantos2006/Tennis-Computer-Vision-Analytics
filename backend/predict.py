@@ -26,6 +26,9 @@ load_dotenv()
 
 import json
 
+MAX_WORKERS = int(os.getenv("MAX WORKERS"))
+VISION_MODEL_ID = int(os.getenv("VISION MODEL ID"))
+
 def predict_without_threads(
         video_path: Path,
         OUTPUT_DIR: Path,
@@ -204,8 +207,8 @@ def predict_with_threads(
         MODEL_PATH: Path, 
         STATUS_PATH: Path,
         api_key: str,
-        vision_model_id: int = 12,
-        MAX_WORKERS: int = 9,
+        vision_model_id: int = VISION_MODEL_ID,
+        MAX_WORKERS: int = MAX_WORKERS,
     ) -> dict:
     
     parts = video_path.parts
@@ -485,7 +488,7 @@ def analyze_video(
     OUTPUT_PATH: Path,
     JOB_ID: str,
     MODEL_PATH: Path,
-    vision_model_id=12,
+    vision_model_id=VISION_MODEL_ID,
 ) -> tuple:
 
     ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")

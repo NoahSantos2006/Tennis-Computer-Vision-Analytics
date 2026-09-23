@@ -47,8 +47,6 @@ function VideoUpload() {
 
                 const resultsData = await resultsResponse.json()
 
-                console.log(resultsData)
-
                 navigate("/results", {
                     state: {
                         data: resultsData

@@ -26,8 +26,8 @@ load_dotenv()
 
 import json
 
-MAX_WORKERS = int(os.getenv("MAX WORKERS"))
-VISION_MODEL_ID = int(os.getenv("VISION MODEL ID"))
+MAX_WORKERS = int(os.getenv("MAX_WORKERS"))
+VISION_MODEL_ID = int(os.getenv("VISION_MODEL_ID"))
 
 def predict_without_threads(
         video_path: Path,

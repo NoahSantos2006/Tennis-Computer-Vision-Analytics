@@ -1,11 +1,9 @@
 import cv2
 import json
-from inference_sdk import InferenceHTTPClient
 import json
 import numpy as np
 from pathlib import Path
 import pickle
-from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import xgboost as xgb
@@ -17,6 +15,9 @@ import time
 import threading
 import psutil
 
+from inference_sdk import InferenceHTTPClient
+from inference_sdk.http.errors import HTTPCallErrorError
+
 from backend.scripts.side_functions import run_predictions, get_bounces
 from backend.scripts.ball_tracker import BallTracker
 from backend.scripts.status import update_status
@@ -25,10 +26,17 @@ load_dotenv()
 
 import json
 
-def print_memory(label):
+def print_memory(label: str, max_workers: int = None):
     process = psutil.Process(os.getpid())
     memory_mb = process.memory_info().rss / (1024 * 1024)
-    print(f"[MEMORY] {label}: {memory_mb:.1f} MB")
+
+    if max_workers:
+        max_workers_text = f"(USING {max_workers} MAX WORKERS)"
+    else:
+        max_workers_text = ""
+    
+
+    print(f"[MEMORY] {label}: {memory_mb:.1f} MB {max_workers_text}")
 
 def predict_without_threads(
         video_path: Path,
@@ -37,20 +45,14 @@ def predict_without_threads(
         STATUS_PATH: Path,
         api_key: str,
         vision_model_id: int,
-        MAX_WORKERS: int = 24,
-        PLAYER_CONFIDENCE_THRESHOLD: float = 0.8,
     ) -> dict:
     
     parts = video_path.parts
 
     VIDEO_FILENAME = parts[-1].split(".")[0].split("_")[0]
 
-    print_memory("before loading video")
-
     # example: input/make/dunk/make4.mp4
     INPUT_VIDEO = str(video_path)
-
-    OUTPUT_VIDEO = f"{OUTPUT_DIR}/annotated_videos/{VIDEO_FILENAME}_annotated.mp4"
 
     cap = cv2.VideoCapture(INPUT_VIDEO)
     if not cap.isOpened():
@@ -58,8 +60,6 @@ def predict_without_threads(
         os._exit(1)
     
     fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
 
@@ -73,31 +73,52 @@ def predict_without_threads(
 
     def predict_frame(
         frame_id: int, 
-        frame: np.array, 
+        frame: np.array,
     ) -> tuple:
 
         if frame_id == 1 or frame_id % 50 == 0:
 
-            data = client.run_workflow(
-                workflow_id=f"tennis-object-detection-model-{vision_model_id}-with-court-points",
-                workspace_name="noahs-workspace-kg24g",
-                images={"image": frame},
-            )[0]
+            try:
+
+                data = client.run_workflow(
+                    workflow_id=f"tennis-object-detection-model-{vision_model_id}-with-court-points",
+                    workspace_name="noahs-workspace-kg24g",
+                    images={"image": frame},
+                )[0]
+
+            except HTTPCallErrorError as e:
+
+                print(
+                    f"Roboflow request failed. "
+                    f"Retrying in {2}s "
+                )
+                time.sleep(2)
 
         else:
 
-            data = client.run_workflow(
-                workflow_id=f"tennis-object-detection-model-{vision_model_id}",
-                workspace_name="noahs-workspace-kg24g",
-                images={"image": frame},
-            )[0]
-        
+            try:
+
+                data = client.run_workflow(
+                    workflow_id=f"tennis-object-detection-model-{vision_model_id}",
+                    workspace_name="noahs-workspace-kg24g",
+                    images={"image": frame},
+                )[0]
+
+            except HTTPCallErrorError as e:
+            
+                print(
+                    f"Roboflow request failed. "
+                    f"Retrying in {2}s "
+                )
+                time.sleep(2)
+
         if not data:
 
             print(f"Could not find data on frame {frame_id}.")
-            os._exit(1)
+            predictions_by_frame[frame_id] = {}
 
         result = data.get("predictions", {}).get("predictions", [])
+        predictions_by_frame[frame_id] = result
 
         court_detection_data = data.get("court_detection_predictions", {})
         if court_detection_data:
@@ -107,64 +128,7 @@ def predict_without_threads(
                 court_detection_points = court_detection_data.get('predictions', [])[0].get("keypoints", [])
                 court_detection_points_by_frame[frame_id] = court_detection_points      
 
-        return frame_id, result
-
-    print_memory("after loading video")
-
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-
-        futures = []
-        frame_id = 1
-
-        while True:
-
-            ret, frame = cap.read()
-            if not ret:
-                break
-
-            future = executor.submit(
-                predict_frame,
-                frame_id=frame_id,
-                frame=frame.copy(),
-                total_frames=total_frames
-            )
-
-            futures.append(future)
-
-            skip_frame = True
-
-            frame_id += 1
-
-        completed_frames = 0
-
-        for future in as_completed(futures):
-
-            frame_id, preds = future.result()
-
-            predictions_by_frame[frame_id] = preds
-
-            completed_frames += 1
-
-            update_status(
-                status_file=STATUS_PATH,
-                status="in progress",
-                stage="Processing Frames",
-                current_frame=completed_frames // 2,
-                total_frames=total_frames
-            )
-
-    print_memory("after validation")
-
-    out = cv2.VideoWriter(
-        OUTPUT_VIDEO,
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps,
-        (width, height)
-    )
-
     frame_id = 1
-
-    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
 
     while True:
 
@@ -172,74 +136,22 @@ def predict_without_threads(
         if not ret:
             break
 
-        cv2.putText(
-            frame,
-            f"Frame Number: {frame_id}",
-            (50, 50),
-            cv2.FONT_HERSHEY_SIMPLEX,   # font
-            1,                        # font size
-            (0, 255, 0),                # font color
-            3 
+        predict_frame(
+            frame_id=frame_id,
+            frame=frame,
         )
-
-        preds = predictions_by_frame.get(frame_id)
-
-        xyxy = []
-        confidences = []
-        class_ids = []
-
-        for pred in preds:
-
-            conf = pred['confidence']
-            class_name = pred['class']
-
-            if class_name == 'player' and conf < PLAYER_CONFIDENCE_THRESHOLD: continue
-
-            x = pred["x"]
-            y = pred["y"]
-            w = pred["width"]
-            h = pred["height"]
-
-            x1 = int(x - w / 2)
-            y1 = int(y - h / 2)
-            x2 = int(x + w / 2)
-            y2 = int(y + h / 2)
-
-            player_box = [x1, y1, x2, y2]
-            pred['box'] = [x1, y1, x2, y2]
-
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-            xyxy.append(player_box)
-            confidences.append(pred['confidence'])
-            class_ids.append(pred['class_id'])
-
-            if class_name == "ball": label = f"{class_name} {conf:.2f} ({x}, {y})"
-            else: label = f"{class_name} ({conf}) ({x}, {y})"
-            
-            cv2.putText(
-                frame,                      # image we're drawing on
-                label,                      # text that will be displayed
-                (x1, max(y1 - 10, 20)),     # bottom left corner of the text
-                cv2.FONT_HERSHEY_SIMPLEX,   # font
-                1,                        # font size
-                (0, 255, 0),                # font color
-                2                           # font thickness
-            )
-
-        out.write(frame)
 
         update_status(
             status_file=STATUS_PATH,
             status="in progress",
             stage="Processing Frames",
-            current_frame=(completed_frames + frame_id) // 2,
+            current_frame=frame_id,
             total_frames=total_frames
         )
 
         frame_id += 1
 
-    print_memory("after processing frames")
+    cap.release()
 
     PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"
     if not os.path.isdir(PREDICTIONS_DIRECTORY):
@@ -256,9 +168,6 @@ def predict_without_threads(
     with open(court_points_path, "w") as f:
 
         json.dump(court_detection_points_by_frame, f)
-
-    cap.release()
-    out.release()
 
     BALL_TRACKER_CLASS_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking_class.pkl")
     BALL_TRACKER_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking.json")
@@ -308,20 +217,15 @@ def predict_with_threads(
         STATUS_PATH: Path,
         api_key: str,
         vision_model_id: int = 12,
-        MAX_WORKERS: int = 4,
-        PLAYER_CONFIDENCE_THRESHOLD: float = 0.8,
+        MAX_WORKERS: int = 2,
     ) -> dict:
     
     parts = video_path.parts
 
     VIDEO_FILENAME = parts[-1].split(".")[0].split("_")[0]
 
-    print_memory("before loading video")
-
     # example: input/make/dunk/make4.mp4
     INPUT_VIDEO = str(video_path)
-
-    OUTPUT_VIDEO = f"{OUTPUT_DIR}/annotated_videos/{VIDEO_FILENAME}_annotated.mp4"
 
     cap = cv2.VideoCapture(INPUT_VIDEO)
     if not cap.isOpened():
@@ -329,8 +233,6 @@ def predict_with_threads(
         os._exit(1)
     
     fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
 
@@ -345,24 +247,43 @@ def predict_with_threads(
     def predict_frame(
         frame_id: int, 
         frame: np.array, 
-        total_frames: int
     ) -> tuple:
 
         if frame_id == 1 or frame_id % 50 == 0:
+            
+            try:
 
-            data = client.run_workflow(
-                workflow_id=f"tennis-object-detection-model-{vision_model_id}-with-court-points",
-                workspace_name="noahs-workspace-kg24g",
-                images={"image": frame},
-            )[0]
+                data = client.run_workflow(
+                    workflow_id=f"tennis-object-detection-model-{vision_model_id}-with-court-points",
+                    workspace_name="noahs-workspace-kg24g",
+                    images={"image": frame},
+                )[0]
+
+            except HTTPCallErrorError as e:
+
+                print(
+                    f"Roboflow request failed. "
+                    f"Retrying in {2}s "
+                )
+                time.sleep(2)
 
         else:
 
-            data = client.run_workflow(
-                workflow_id=f"tennis-object-detection-model-{vision_model_id}",
-                workspace_name="noahs-workspace-kg24g",
-                images={"image": frame},
-            )[0]
+            try:
+
+                data = client.run_workflow(
+                    workflow_id=f"tennis-object-detection-model-{vision_model_id}",
+                    workspace_name="noahs-workspace-kg24g",
+                    images={"image": frame},
+                )[0]
+
+            except HTTPCallErrorError as e:
+            
+                print(
+                    f"Roboflow request failed. "
+                    f"Retrying in {2}s "
+                )
+                time.sleep(2)
         
         if not data:
 
@@ -381,8 +302,6 @@ def predict_with_threads(
 
         return frame_id, result
 
-    print_memory("after loading video")
-
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
 
         futures = []
@@ -398,12 +317,9 @@ def predict_with_threads(
                 predict_frame,
                 frame_id=frame_id,
                 frame=frame.copy(),
-                total_frames=total_frames
             )
 
             futures.append(future)
-
-            skip_frame = True
 
             frame_id += 1
 
@@ -421,97 +337,11 @@ def predict_with_threads(
                 status_file=STATUS_PATH,
                 status="in progress",
                 stage="Processing Frames",
-                current_frame=completed_frames // 2,
+                current_frame=completed_frames,
                 total_frames=total_frames
             )
 
-    print_memory("after validation")
-
-    out = cv2.VideoWriter(
-        OUTPUT_VIDEO,
-        cv2.VideoWriter_fourcc(*"mp4v"),
-        fps,
-        (width, height)
-    )
-
-    frame_id = 1
-
-    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-
-    while True:
-
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        cv2.putText(
-            frame,
-            f"Frame Number: {frame_id}",
-            (50, 50),
-            cv2.FONT_HERSHEY_SIMPLEX,   # font
-            1,                        # font size
-            (0, 255, 0),                # font color
-            3 
-        )
-
-        preds = predictions_by_frame.get(frame_id)
-
-        xyxy = []
-        confidences = []
-        class_ids = []
-
-        for pred in preds:
-
-            conf = pred['confidence']
-            class_name = pred['class']
-
-            if class_name == 'player' and conf < PLAYER_CONFIDENCE_THRESHOLD: continue
-
-            x = pred["x"]
-            y = pred["y"]
-            w = pred["width"]
-            h = pred["height"]
-
-            x1 = int(x - w / 2)
-            y1 = int(y - h / 2)
-            x2 = int(x + w / 2)
-            y2 = int(y + h / 2)
-
-            player_box = [x1, y1, x2, y2]
-            pred['box'] = [x1, y1, x2, y2]
-
-            cv2.rectangle(frame, (x1, y1), (x2, y2), (0, 255, 0), 2)
-
-            xyxy.append(player_box)
-            confidences.append(pred['confidence'])
-            class_ids.append(pred['class_id'])
-
-            if class_name == "ball": label = f"{class_name} {conf:.2f} ({x}, {y})"
-            else: label = f"{class_name} ({conf}) ({x}, {y})"
-            
-            cv2.putText(
-                frame,                      # image we're drawing on
-                label,                      # text that will be displayed
-                (x1, max(y1 - 10, 20)),     # bottom left corner of the text
-                cv2.FONT_HERSHEY_SIMPLEX,   # font
-                1,                        # font size
-                (0, 255, 0),                # font color
-                2                           # font thickness
-            )
-
-        out.write(frame)
-
-        update_status(
-            status_file=STATUS_PATH,
-            status="in progress",
-            stage="Processing Frames",
-            current_frame=(completed_frames + frame_id) // 2,
-            total_frames=total_frames
-        )
-
-        frame_id += 1
-
-    print_memory("after processing frames")
+    cap.release()
 
     PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"
     if not os.path.isdir(PREDICTIONS_DIRECTORY):
@@ -528,9 +358,6 @@ def predict_with_threads(
     with open(court_points_path, "w") as f:
 
         json.dump(court_detection_points_by_frame, f)
-
-    cap.release()
-    out.release()
 
     BALL_TRACKER_CLASS_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking_class.pkl")
     BALL_TRACKER_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking.json")
@@ -570,8 +397,6 @@ def predict_with_threads(
         current_frame=total_frames,
         total_frames=total_frames
     )
-
-    print_memory("after XGBoost modelling")
 
     return bounce_detection_dict, fps
 
@@ -712,7 +537,7 @@ def analyze_video(
 
     VIDEO_PATH = Path(os.path.join(INPUT_PATH, "validated_videos", f"{VIDEO_FILENAME}.mp4"))
 
-    bounce_detection_dict, fps = predict_with_threads(
+    bounce_detection_dict, fps = predict_without_threads(
         video_path=VIDEO_PATH,
         OUTPUT_DIR=OUTPUT_PATH,
         MODEL_PATH=MODEL_PATH,

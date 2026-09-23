@@ -4,7 +4,7 @@ import json
 import numpy as np
 from pathlib import Path
 import pickle
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
 
 import xgboost as xgb
 
@@ -25,18 +25,6 @@ from backend.scripts.status import update_status
 load_dotenv()
 
 import json
-
-def print_memory(label: str, max_workers: int = None):
-    process = psutil.Process(os.getpid())
-    memory_mb = process.memory_info().rss / (1024 * 1024)
-
-    if max_workers:
-        max_workers_text = f"(USING {max_workers} MAX WORKERS)"
-    else:
-        max_workers_text = ""
-    
-
-    print(f"[MEMORY] {label}: {memory_mb:.1f} MB {max_workers_text}")
 
 def predict_without_threads(
         video_path: Path,
@@ -217,7 +205,7 @@ def predict_with_threads(
         STATUS_PATH: Path,
         api_key: str,
         vision_model_id: int = 12,
-        MAX_WORKERS: int = 2,
+        MAX_WORKERS: int = 8,
     ) -> dict:
     
     parts = video_path.parts
@@ -302,44 +290,58 @@ def predict_with_threads(
 
         return frame_id, result
 
+    MAX_PENDING = MAX_WORKERS * 3
+
+    # bounded concurrency
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
 
-        futures = []
+        pending = set()
         frame_id = 1
+        completed_frames = 0
+        video_finished = False
 
-        while True:
+        while pending or not video_finished:
 
-            ret, frame = cap.read()
-            if not ret:
+            while len(pending) < MAX_PENDING and not video_finished:
+
+                ret, frame = cap.read()
+                if not ret:
+                    video_finished = True
+                    break
+
+                future = executor.submit(
+                    predict_frame,
+                    frame_id=frame_id,
+                    frame=frame.copy(),
+                )
+
+                pending.add(future)
+                frame_id += 1
+
+            if not pending:
                 break
 
-            future = executor.submit(
-                predict_frame,
-                frame_id=frame_id,
-                frame=frame.copy(),
+            # wait until one frame finishes
+            done, pending = wait(
+                pending,
+                return_when=FIRST_COMPLETED
             )
 
-            futures.append(future)
+            for future in done:
 
-            frame_id += 1
+                result_frame_id, preds = future.result()
 
-        completed_frames = 0
+                predictions_by_frame[result_frame_id] = preds
 
-        for future in as_completed(futures):
+                completed_frames += 1
 
-            frame_id, preds = future.result()
-
-            predictions_by_frame[frame_id] = preds
-
-            completed_frames += 1
-
-            update_status(
-                status_file=STATUS_PATH,
-                status="in progress",
-                stage="Processing Frames",
-                current_frame=completed_frames,
-                total_frames=total_frames
-            )
+                update_status(
+                    status_file=STATUS_PATH,
+                    status="in progress",
+                    stage="Processing Frames",
+                    current_frame=completed_frames,
+                    total_frames=total_frames
+                )
 
     cap.release()
 
@@ -537,13 +539,13 @@ def analyze_video(
 
     VIDEO_PATH = Path(os.path.join(INPUT_PATH, "validated_videos", f"{VIDEO_FILENAME}.mp4"))
 
-    bounce_detection_dict, fps = predict_without_threads(
+    bounce_detection_dict, fps = predict_with_threads(
         video_path=VIDEO_PATH,
         OUTPUT_DIR=OUTPUT_PATH,
         MODEL_PATH=MODEL_PATH,
         STATUS_PATH=STATUS_PATH,
         api_key=ROBOFLOW_API_KEY, 
-        vision_model_id=vision_model_id, 
+        vision_model_id=vision_model_id
     )
 
     results = {

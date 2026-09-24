@@ -7,7 +7,7 @@ A full-stack computer vision application for analyzing tennis match footage. A *
 ## Features
 
 - 🎥 **Video upload & job queue** — upload a match clip via the web app; processing runs asynchronously as a background job
-- 👤 **Player detection** via Ultralytics YOLO
+- 👤 **Player detection** via Roboflow RF-DETR
 - 🟡 **Ball detection & tracking**, including a dedicated ball-tracking class serialized per job
 - 🏟️ **Court detection** — court reference points extracted per video
 - 📐 **Homography transformation** — maps camera-perspective coordinates onto a normalized court
@@ -20,21 +20,21 @@ A full-stack computer vision application for analyzing tennis match footage. A *
 
 ```text
 ┌──────────────────┐        upload video        ┌───────────────────────┐
-│  React Frontend  │ ───────────────────────────▶│    FastAPI Backend    │
-│  (Vite + React)  │                              │                       │
-│                   │◀───── job_id, status ────────│  /analyze             │
-│  VideoUpload      │                              │  /jobs/{id}/status    │
-│  ProcessingVideo  │◀──── results.json ───────────│  /jobs/{id}/results   │
-│  TennisCourt      │                              │  /video/{id}/{file}   │
-│  ShotChart        │                              │                       │
+│  React Frontend  │ ─────────────────────────▶  │   FastAPI Backend    │
+│  (Vite + React)  │                             │                       │
+│                  │◀───── job_id, status ───── │  /analyze             │
+│  VideoUpload     │                             │  /jobs/{id}/status    │
+│  ProcessingVideo │◀──── results.json ───────── │  /jobs/{id}/results   │
+│  TennisCourt     │                              │  /video/{id}/{file}   │
+│  ShotChart       │                              │                       │
 └──────────────────┘                              └──────────┬────────────┘
                                                                │ background task
                                                                ▼
                                                    ┌───────────────────────┐
-                                                   │   Detection Pipeline   │
+                                                   │   Detection Pipeline  │
                                                    │  (backend/predict.py) │
                                                    │                       │
-                                                   │ YOLO / Roboflow       │
+                                                   │ Roboflow  RD-DETR     │
                                                    │ Court + Ball tracking │
                                                    │ Homography            │
                                                    │ XGBoost bounce model  │
@@ -64,7 +64,7 @@ A full-stack computer vision application for analyzing tennis match footage. A *
 | Layer | Technology |
 | --- | --- |
 | Backend framework | FastAPI, Uvicorn |
-| Computer vision | Ultralytics YOLO, OpenCV, Roboflow `inference_sdk` |
+| Computer vision | OpenCV, Roboflow `inference_sdk` |
 | Bounce classification | XGBoost |
 | Data handling | NumPy, pandas, PyArrow, scikit-learn |
 | Video downloading (tooling) | yt-dlp, ffmpeg |

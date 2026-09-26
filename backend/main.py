@@ -12,7 +12,24 @@ from uuid import uuid4
 from backend.predict import analyze_video
 from backend.scripts.status import status_lock
 
-app = FastAPI()
+from backend.scripts.sweep import sweeper_loop
+from contextlib import asynccontextmanager
+import asyncio
+
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+STORAGE_DIRECTORY = PROJECT_ROOT / "storage"
+
+JOBS_DIR = STORAGE_DIRECTORY / "jobs"
+
+MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
+
+@asynccontextmanager
+async def lifespan(app):
+    task = asyncio.create_task(sweeper_loop())
+    yield
+    task.cancel()
+
+app = FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -24,15 +41,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
-STORAGE_DIRECTORY = PROJECT_ROOT / "storage"
-
-JOBS_DIR = STORAGE_DIRECTORY / "jobs"
-shutil.rmtree(JOBS_DIR, ignore_errors=True)
-os.makedirs(JOBS_DIR)
-
-MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
 
 def create_job():
 
@@ -139,3 +147,4 @@ def get_results(job_id: str):
         results['Bounce Detection Dictionary'] = {int(k): v for k, v in results['Bounce Detection Dictionary'].items()}
 
     return results
+

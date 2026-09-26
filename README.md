@@ -1,4 +1,4 @@
-# 🎾 CourtVision — Tennis Computer Vision Analytics
+# 🎾 Tennis Computer Vision Analytics
 
 A full-stack computer vision application for analyzing tennis match footage. A **FastAPI** backend runs a Roboflow-based detection pipeline (player detection, court detection, ball tracking, bounce detection, homography) on an uploaded video as a background job, and a **React** frontend lets a user upload a clip, watch job progress, and view the resulting shot chart.
 

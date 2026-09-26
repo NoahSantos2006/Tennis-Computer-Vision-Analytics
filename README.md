@@ -1,6 +1,6 @@
-# 🎾 CourtVision — Tennis Computer Vision Analytics
+# 🎾 Tennis Computer Vision Analytics
 
-A full-stack computer vision application for analyzing tennis match footage. A **FastAPI** backend runs a YOLO/Roboflow-based detection pipeline (player detection, court detection, ball tracking, bounce detection, homography) on an uploaded video as a background job, and a **React** frontend lets a user upload a clip, watch job progress, and view the resulting shot chart.
+A full-stack computer vision application for analyzing tennis match footage. A **FastAPI** backend runs a Roboflow-based detection pipeline (player detection, court detection, ball tracking, bounce detection, homography) on an uploaded video as a background job, and a **React** frontend lets a user upload a clip, watch job progress, and view the resulting shot chart.
 
 **Live demo:** [tennis-computer-vision-analytics.vercel.app](https://tennis-computer-vision-analytics.vercel.app/)
 
@@ -52,7 +52,7 @@ A full-stack computer vision application for analyzing tennis match footage. A *
 
 1. **Upload & job creation** — the frontend posts a video to `/analyze`; the backend creates a UUID-named job folder under `storage/jobs/<job_id>/` with `input/` and `output/` subdirectories, then kicks off processing as a FastAPI background task.
 2. **Video validation** — the input clip is checked before full processing begins.
-3. **Object detection** — each frame is run through YOLO / Roboflow Inference to detect players, the ball, and court features.
+3. **Object detection** — each frame is run through Roboflow Inference to detect players, the ball, and court features.
 4. **Court detection** — court reference points are extracted and saved to `output/court_points/`.
 5. **Homography** — detected court points are used to compute a homography matrix mapping camera coordinates to normalized court coordinates.
 6. **Ball tracking & bounce detection** — `backend/scripts/ball_tracker.py` reconstructs ball trajectory across frames; a trained XGBoost model (`backend/models/model.ubj`) classifies bounces.

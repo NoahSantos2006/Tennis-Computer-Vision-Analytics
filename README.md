@@ -1,6 +1,6 @@
 # 🎾 Tennis Computer Vision Analytics
 
-A full-stack computer vision application for analyzing tennis match footage. A **FastAPI** backend runs a Roboflow-based detection pipeline (player detection, court detection, ball tracking, bounce detection, homography) on an uploaded video as a background job, and a **React** frontend lets a user upload a clip, watch job progress, and view the resulting shot chart.
+A full-stack computer vision application for analyzing tennis match footage. A **FastAPI** backend runs a Roboflow-based detection pipeline (player detection, court detection, ball tracking, homography, bounce and hit detection) on an uploaded video as a background job, and a **React** frontend lets a user upload a clip, watch job progress, and view the resulting shot chart.
 
 **Live demo:** [tennis-computer-vision-analytics.vercel.app](https://tennis-computer-vision-analytics.vercel.app/)
 
@@ -11,7 +11,8 @@ A full-stack computer vision application for analyzing tennis match footage. A *
 - 🟡 **Ball detection & tracking**, including a dedicated ball-tracking class serialized per job
 - 🏟️ **Court detection** — court reference points extracted per video
 - 📐 **Homography transformation** — maps camera-perspective coordinates onto a normalized court
-- 💥 **Bounce detection** using a trained XGBoost model (`backend/models/model.ubj`)
+- ⏭️ **Repeat-frame skipping** — duplicated frames (from frame-rate conversion) are detected and not sent for inference, while frame numbering stays aligned with the original video
+- 💥 **Bounce & hit detection** using a trained XGBoost model (`backend/models/model.ubj`) with configurable probability thresholds
 - 📊 **Shot chart visualization** in the frontend, built from the transformed ball-position data
 - 🔄 **Job status polling** — the frontend polls the backend for live processing status
 - ☁️ **Roboflow Inference** integration for hosted model inference
@@ -34,10 +35,10 @@ A full-stack computer vision application for analyzing tennis match footage. A *
                                                    │   Detection Pipeline  │
                                                    │  (backend/predict.py) │
                                                    │                       │
-                                                   │ Roboflow  RD-DETR     │
+                                                   │ Roboflow  RF-DETR     │
                                                    │ Court + Ball tracking │
                                                    │ Homography            │
-                                                   │ XGBoost bounce model  │
+                                                   │ XGBoost bounce/hit    │
                                                    └──────────┬────────────┘
                                                                ▼
                                               storage/jobs/{job_id}/output/
@@ -51,13 +52,14 @@ A full-stack computer vision application for analyzing tennis match footage. A *
 ### Processing pipeline
 
 1. **Upload & job creation** — the frontend posts a video to `/analyze`; the backend creates a UUID-named job folder under `storage/jobs/<job_id>/` with `input/` and `output/` subdirectories, then kicks off processing as a FastAPI background task.
-2. **Video validation** — the input clip is checked before full processing begins.
-3. **Object detection** — each frame is run through Roboflow Inference to detect players, the ball, and court features.
-4. **Court detection** — court reference points are extracted and saved to `output/court_points/`.
-5. **Homography** — detected court points are used to compute a homography matrix mapping camera coordinates to normalized court coordinates.
-6. **Ball tracking & bounce detection** — `backend/scripts/ball_tracker.py` reconstructs ball trajectory across frames; a trained XGBoost model (`backend/models/model.ubj`) classifies bounces.
-7. **Output generation** — frame predictions, court points, ball-tracking data, and a final `results.json` (including a bounce-detection dictionary) are written to the job's `output/` folder.
-8. **Frontend polling & visualization** — the frontend polls `/jobs/{job_id}/status` until processing completes, then fetches `/jobs/{job_id}/results` and renders the shot chart over a `TennisCourt` layout.
+2. **Repeat-frame detection** — each frame is downscaled to 480×270 grayscale and compared with the previous real frame; if fewer than 20 pixels differ by more than 20, it is marked `"Repeat Frame"` and skipped by inference, tracking, and classification.
+3. **Object detection** — frames are sent in parallel (`MAX_WORKERS` threads, `MAX_ATTEMPTS` retries with backoff) to Roboflow workflows. Frame 1 and every 50th frame use the workflow that also returns court keypoints (`WORKFLOW_ID_WITH_COURT_POINTS`); the rest use `WORKFLOW_ID`. Progress is written to `output/status.json` as frames complete.
+4. **Court detection** — court keypoints are saved to `output/court_points/`.
+5. **Homography** — court keypoints are fit to a top-down court template (RANSAC) so ball and player positions can be mapped onto the court.
+6. **Ball tracking** — `backend/scripts/ball_tracker.py` (`BallTracker`) picks the real ball each frame, estimates positions through missed detections, and corrects false positives. Velocity, speed and direction-change angle are computed per frame.
+7. **Bounce & hit classification** — each real frame gets a feature window of ±5 real frames (speed, velocity, angle, court position, distance to nearest player, estimation flag). The XGBoost model (`backend/models/model.ubj`) outputs bounce/hit probabilities; `XGB_BOUNCE_THRESHOLD` and `XGB_HIT_THRESHOLD` decide which peaks become events.
+8. **Output generation** — frame predictions, court points, ball-tracking data, and `results.json` (a per-frame label — 0 none, 1 bounce, 2 hit — with the ball's court location) are written to the job folder.
+9. **Frontend polling & visualization** — the frontend polls `/jobs/{job_id}/status` until processing completes, then fetches `/jobs/{job_id}/results` and renders the shot chart over a `TennisCourt` layout.
 
 ## Tech Stack
 
@@ -82,11 +84,10 @@ Tennis Computer Vision Analytics/
 │   │   └── model.ubj              # Trained XGBoost bounce-detection model
 │   └── scripts/
 │       ├── ball_tracker.py        # Ball tracking across frames
-│       ├── homography.py          # Court mapping / perspective transform
-│       ├── side_functions.py      # Predictions, court points, angle calcs
-│       ├── prepping_model.py      # Model prep helpers
+│       ├── side_functions.py      # Tracking driver, homography, angles, bounce/hit picking
+│       ├── prepping_model.py      # Windowed feature rows for the XGBoost model
 │       ├── status.py              # Thread-safe job status read/write
-│       └── print_memory.py        # Memory usage debugging helper
+│       └── sweep.py               # Background cleanup of finished jobs
 ├── frontend/
 │   ├── src/
 │   │   ├── main.jsx
@@ -117,8 +118,8 @@ Tennis Computer Vision Analytics/
 ### 1. Clone the repository
 
 ```bash
-git clone git@github.com:NoahSantos2006/Tennis-Pickleball-Computer-Vision-Analytics.git
-cd "Tennis Computer Vision Analytics"
+git clone https://github.com/NoahSantos2006/Tennis-Computer-Vision-Analytics.git
+cd Tennis-Computer-Vision-Analytics
 ```
 
 ### 2. Backend setup
@@ -129,13 +130,24 @@ source venv/bin/activate      # Windows: venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-Create a `.env` file in the project root:
+Create a `.env` file in the project root. Every variable below is read at startup, so the backend will fail to import if one is missing.
 
-```env
-ROBOFLOW_API_KEY=your_roboflow_api_key
-MAX_WORKERS=4
-VISION_MODEL_ID=your_model_id
-```
+| Variable | Purpose |
+| --- | --- |
+| `ROBOFLOW_API_KEY` | Roboflow API key |
+| `WORKSPACE_NAME` | Roboflow workspace that hosts the workflows |
+| `WORKFLOW_ID` | Workflow for object detection (players + ball) |
+| `WORKFLOW_ID_WITH_COURT_POINTS` | Workflow that also returns court keypoints (frame 1 and every 50th frame) |
+| `MAX_WORKERS` | Parallel inference requests |
+| `MAX_ATTEMPTS` | Retries per frame before it is recorded as failed |
+| `XGB_BOUNCE_THRESHOLD` | Minimum bounce probability for an event |
+| `XGB_HIT_THRESHOLD` | Minimum hit probability for an event |
+| `TENNIS_COURT_LENGTH` | Court length in meters |
+| `TENNIS_COURT_WIDTH` | Court width in meters |
+| `TENNIS_COURT_SCALE` | Pixels per meter on the top-down court template |
+| `TENNIS_COURT_PADDING` | Padding in pixels around the top-down court |
+| `MAX_AGE` | Seconds a finished job is kept before the sweeper deletes it |
+| `CHECK_EVERY` | Seconds between sweeper runs |
 
 > **Never commit `.env` or API keys.** It's already listed in `.gitignore`.
 
@@ -154,6 +166,8 @@ cd frontend
 npm install
 npm run dev
 ```
+
+Set `VITE_API_URL` (for example in `frontend/.env`) to the backend's URL, such as `http://localhost:8000`.
 
 The app will be available at `http://localhost:5173` (the default Vite port, already allow-listed in the backend's CORS config).
 
@@ -179,12 +193,12 @@ storage/jobs/<job_id>/output/
 ├── predictions/
 │   └── <video_name>_predictions.txt         # Frame-by-frame model predictions
 └── status.json                              # Live job status
-storage/jobs/<job_id>/results.json           # Final combined results
+storage/jobs/<job_id>/results.json           # Per-frame labels (0 none, 1 bounce, 2 hit) + court location, fps, video name, job id
 ```
 
 ## Notes
 
-- On backend startup, `storage/jobs/` is wiped and recreated, so job data does not persist across server restarts.
+- A background sweeper (`backend/scripts/sweep.py`) runs every `CHECK_EVERY` seconds and deletes job folders whose `results.json` is older than `MAX_AGE` seconds.
 - Deployment note: the CORS config in `backend/main.py` allow-lists `http://localhost:5173` and a Vercel-hosted frontend URL — update this list for other deployment targets.
 
 ## License

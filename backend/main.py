@@ -25,7 +25,7 @@ MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
 
 @asynccontextmanager
 async def lifespan(app):
-    task = asyncio.create_task(sweeper_loop())
+    task = asyncio.create_task(sweeper_loop(JOBS_DIR=JOBS_DIR))
     yield
     task.cancel()
 

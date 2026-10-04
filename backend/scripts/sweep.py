@@ -14,10 +14,10 @@ def sweep_once(JOBS_DIR: Path):
         if results_path.is_file() and results_path.stat().st_mtime < cutoff:
             shutil.rmtree(job_id, ignore_errors=True)
 
-async def sweeper_loop():
+async def sweeper_loop(JOBS_DIR: Path):
     while True:
         try:
-            await asyncio.to_thread(sweep_once)
+            await asyncio.to_thread(sweep_once, JOBS_DIR=JOBS_DIR)
         except Exception as e:
             print(f"sweep failed: {e}")
         await asyncio.sleep(CHECK_EVERY)

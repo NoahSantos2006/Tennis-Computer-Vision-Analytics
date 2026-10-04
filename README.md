@@ -33,15 +33,9 @@ Point it at broadcast tennis footage and it will:
 
 ## How it works
 
-```mermaid
-flowchart LR
-    A[🎥 Upload video] --> B[Skip repeat frames]
-    B --> C[Roboflow detection<br/>ball · players · court]
-    C --> D[Homography<br/>camera → court]
-    D --> E[Ball tracking]
-    E --> F[XGBoost<br/>bounce / hit]
-    F --> G[📊 Shot chart]
-```
+<p align="center">
+  <img src="docs/pipeline.svg" alt="Pipeline: upload video, skip repeat frames, Roboflow detection, homography, ball tracking, XGBoost bounce/hit classification, shot chart" width="100%">
+</p>
 
 <details>
 <summary><b>Step by step</b></summary>

@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="360" viewBox="0 0 960 360" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="court" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1d5c3a"/>
+      <stop offset="1" stop-color="#164a2e"/>
+    </linearGradient>
+    <marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#d9ec4a"/>
+    </marker>
+  </defs>
+
+  <!-- court background -->
+  <rect x="0" y="0" width="960" height="360" rx="18" fill="url(#court)"/>
+  <rect x="14" y="14" width="932" height="332" rx="10" fill="none" stroke="#ffffff" stroke-opacity="0.18" stroke-width="2"/>
+  <line x1="480" y1="14" x2="480" y2="346" stroke="#ffffff" stroke-opacity="0.08" stroke-width="2" stroke-dasharray="6 6"/>
+
+  <!-- arrows -->
+  <g stroke="#d9ec4a" stroke-width="3" fill="none" marker-end="url(#arrow)">
+    <line x1="235" y1="100" x2="268" y2="100"/>
+    <line x1="465" y1="100" x2="498" y2="100"/>
+    <line x1="695" y1="100" x2="728" y2="100"/>
+    <path d="M830,150 L830,206"/>
+    <line x1="735" y1="260" x2="702" y2="260"/>
+    <line x1="505" y1="260" x2="472" y2="260"/>
+  </g>
+
+  <!-- box template: x, y=50 or 210, w=190, h=100 -->
+  <g>
+    <rect x="45" y="50" width="190" height="100" rx="12" fill="#0f3622" stroke="#ffffff" stroke-opacity="0.35"/>
+    <circle cx="68" cy="73" r="13" fill="#d9ec4a"/><text x="68" y="78" text-anchor="middle" font-size="14" font-weight="700" fill="#0f3622">1</text>
+    <text x="140" y="96" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">Upload video</text>
+    <text x="140" y="118" text-anchor="middle" font-size="12.5" fill="#bfe3c9">starts a background job</text>
+    <text x="140" y="134" text-anchor="middle" font-size="12.5" fill="#bfe3c9">with live progress</text>
+  </g>
+  <g>
+    <rect x="275" y="50" width="190" height="100" rx="12" fill="#0f3622" stroke="#ffffff" stroke-opacity="0.35"/>
+    <circle cx="298" cy="73" r="13" fill="#d9ec4a"/><text x="298" y="78" text-anchor="middle" font-size="14" font-weight="700" fill="#0f3622">2</text>
+    <text x="370" y="96" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">Skip repeats</text>
+    <text x="370" y="118" text-anchor="middle" font-size="12.5" fill="#bfe3c9">duplicated frames ignored,</text>
+    <text x="370" y="134" text-anchor="middle" font-size="12.5" fill="#bfe3c9">frame numbers kept</text>
+  </g>
+  <g>
+    <rect x="505" y="50" width="190" height="100" rx="12" fill="#0f3622" stroke="#ffffff" stroke-opacity="0.35"/>
+    <circle cx="528" cy="73" r="13" fill="#d9ec4a"/><text x="528" y="78" text-anchor="middle" font-size="14" font-weight="700" fill="#0f3622">3</text>
+    <text x="600" y="96" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">Detection</text>
+    <text x="600" y="118" text-anchor="middle" font-size="12.5" fill="#bfe3c9">Roboflow RF-DETR:</text>
+    <text x="600" y="134" text-anchor="middle" font-size="12.5" fill="#bfe3c9">ball · players · court</text>
+  </g>
+  <g>
+    <rect x="735" y="50" width="190" height="100" rx="12" fill="#0f3622" stroke="#ffffff" stroke-opacity="0.35"/>
+    <circle cx="758" cy="73" r="13" fill="#d9ec4a"/><text x="758" y="78" text-anchor="middle" font-size="14" font-weight="700" fill="#0f3622">4</text>
+    <text x="830" y="96" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">Homography</text>
+    <text x="830" y="118" text-anchor="middle" font-size="12.5" fill="#bfe3c9">camera view to</text>
+    <text x="830" y="134" text-anchor="middle" font-size="12.5" fill="#bfe3c9">top-down court</text>
+  </g>
+  <g>
+    <rect x="735" y="210" width="190" height="100" rx="12" fill="#0f3622" stroke="#ffffff" stroke-opacity="0.35"/>
+    <circle cx="758" cy="233" r="13" fill="#d9ec4a"/><text x="758" y="238" text-anchor="middle" font-size="14" font-weight="700" fill="#0f3622">5</text>
+    <text x="830" y="256" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">Ball tracking</text>
+    <text x="830" y="278" text-anchor="middle" font-size="12.5" fill="#bfe3c9">gaps filled,</text>
+    <text x="830" y="294" text-anchor="middle" font-size="12.5" fill="#bfe3c9">false positives removed</text>
+  </g>
+  <g>
+    <rect x="505" y="210" width="190" height="100" rx="12" fill="#0f3622" stroke="#ffffff" stroke-opacity="0.35"/>
+    <circle cx="528" cy="233" r="13" fill="#d9ec4a"/><text x="528" y="238" text-anchor="middle" font-size="14" font-weight="700" fill="#0f3622">6</text>
+    <text x="600" y="256" text-anchor="middle" font-size="17" font-weight="700" fill="#ffffff">XGBoost</text>
+    <text x="600" y="278" text-anchor="middle" font-size="12.5" fill="#bfe3c9">±5-frame motion window</text>
+    <text x="600" y="294" text-anchor="middle" font-size="12.5" fill="#bfe3c9">→ bounce / hit / none</text>
+  </g>
+  <g>
+    <rect x="275" y="210" width="190" height="100" rx="12" fill="#d9ec4a"/>
+    <circle cx="298" cy="233" r="13" fill="#0f3622"/><text x="298" y="238" text-anchor="middle" font-size="14" font-weight="700" fill="#d9ec4a">7</text>
+    <text x="370" y="256" text-anchor="middle" font-size="17" font-weight="700" fill="#0f3622">Shot chart</text>
+    <text x="370" y="278" text-anchor="middle" font-size="12.5" fill="#28461f">rally video + court map</text>
+    <text x="370" y="294" text-anchor="middle" font-size="12.5" fill="#28461f">of every bounce</text>
+  </g>
+
+  <!-- tennis ball + title in the open slot -->
+  <g transform="translate(140 260)">
+    <circle r="30" fill="#d9ec4a"/>
+    <path d="M-21,-21 C-6,-8 -6,8 -21,21" stroke="#ffffff" stroke-width="3" fill="none"/>
+    <path d="M21,-21 C6,-8 6,8 21,21" stroke="#ffffff" stroke-width="3" fill="none"/>
+  </g>
+  <text x="140" y="316" text-anchor="middle" font-size="13" font-weight="600" fill="#ffffff" fill-opacity="0.75">Tennis CV Analytics</text>
+</svg>

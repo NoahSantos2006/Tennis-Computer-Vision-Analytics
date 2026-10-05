@@ -6,27 +6,19 @@ function ProcessingVideo({ status = null, progress = 0, currentFrame = 0, totalF
     // 0 = not started
     // 1 = in progress
     // 2 = finished
-    let videoValidation = 0;
     let videoProcessing = 0;
     let videoXGBoostPrediction = 0;
 
     if (status === "finished") {
-        videoValidation = 2;
         videoProcessing = 2;
         videoXGBoostPrediction = 2;
     } else {
         switch (stage) {
-            case "Validating Video":
-                videoValidation = 1;
-                break;
-
             case "Processing Frames":
-                videoValidation = 2;
                 videoProcessing = 1;
                 break;
 
             case "Detecting Bounces and Hits":
-                videoValidation = 2;
                 videoProcessing = 2;
                 videoXGBoostPrediction = 1;
                 break;
@@ -66,23 +58,6 @@ function ProcessingVideo({ status = null, progress = 0, currentFrame = 0, totalF
                 </div>
 
                 <div className="processing-status">
-
-                    {
-                        videoValidation === 0
-                        ? <div className="waiting">
-                            <span>○</span>
-                            Validating Video
-                        </div>
-                        : videoValidation === 1
-                            ? <div className="active">
-                                <span className="processing-dot"></span>
-                                Validating Video
-                            </div>
-                            : <div className="complete">
-                                <span>✓</span>
-                                Validating Video
-                            </div>
-                    }
 
                     {
                         videoProcessing === 0

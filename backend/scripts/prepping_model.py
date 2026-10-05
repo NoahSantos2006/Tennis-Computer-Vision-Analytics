@@ -8,26 +8,60 @@ import json
 
 from backend.scripts.ball_tracker import BallTracker
 
-def get_training_dataframe(
+def pick_events(
+        frames: pd.DataFrame, 
+        p: np.array, 
+        threshold: float = 0.5, 
+        gap: int = 3
+    ):
+    # frames above thr that are within `gap` of each other form one cluster; keep its peak
+    idx = np.where(p >= threshold)[0]
+    events, cluster = [], []
+    for k in idx:
+        if cluster and frames[k] - frames[cluster[-1]] > gap:
+            events.append(max(cluster, key=lambda c: p[c])); cluster = []
+        cluster.append(k)
+    if cluster:
+        events.append(max(cluster, key=lambda c: p[c]))
+    return frames[events]
+
+def acquire_training_dataframes(
+        VIDEO_FILENAME: str,
+        OUTPUT_PATH: Path,
+    ) -> pd.DataFrame:
+
+        BALL_TRACKER_JSON_FILE = os.path.join(OUTPUT_PATH, "BallTracking", f"{VIDEO_FILENAME}", f"{VIDEO_FILENAME}_ball_tracking.json")
+        PREDICTIONS_FILE = os.path.join(OUTPUT_PATH, f"predictions", f"{VIDEO_FILENAME}_predictions.txt")
+
+        with open(BALL_TRACKER_JSON_FILE, "r") as f:
+
+            ball_tracker = json.load(f)
+
+        df = get_dataframe(
+            ball_tracker=ball_tracker,
+            VIDEO_FILENAME=VIDEO_FILENAME,
+            PREDICTIONS_FILE=PREDICTIONS_FILE
+        )
+
+        return df
+
+def get_dataframe(
     ball_tracker: dict,
-    BOUNCE_LABELS_PATH: Path,
-    HIT_LABELS_PATH: Path,
     VIDEO_FILENAME: str,
     PREDICTIONS_FILE: Path,
     bounce_window: int = 5,
 ):
 
-    ball_tracker = {int(k): v for k, v in ball_tracker.items()}
+    temp_ball_tracker = {}
+    real_frames = []
+    for k, v in ball_tracker.items():
 
-    with open(BOUNCE_LABELS_PATH, "r") as file:
+        temp_ball_tracker[int(k)] = v
 
-        bounces = file.read().split("\n")
-        bounces = [int(val) for val in bounces]
+        if not v['repeat_frame']:
+            real_frames.append(int(k))
 
-    with open(HIT_LABELS_PATH, "r") as file:
-
-        hits = file.read().split("\n")
-        hits = [int(val) for val in hits]
+    ball_tracker = temp_ball_tracker
 
     with open(PREDICTIONS_FILE, "r") as file:
 
@@ -38,166 +72,69 @@ def get_training_dataframe(
         frame_id: int,
         ball_tracker: dict,
         predictions_dict: dict,
-        bounce_window: int
+        bounce_window: int,
+        real_frames: list,
+        FEATURES: list = [
+            "SPEED", "VX", "VY", "ANGLE", "HOMOGRAPHY X", "HOMOGRAPHY Y",
+            "DISTANCE FROM NEAREST PLAYER", "ESTIMATION"
+        ]
     ) -> dict:
 
         res = {}
 
-        start_frame = frame_id - bounce_window
-        end_frame = frame_id + bounce_window
-        current_disparity = bounce_window
-        
-        while start_frame < 2:
+        i = real_frames.index(frame_id)
 
-            if current_disparity < 0:
-                disparity_title = f"(frame + {abs(current_disparity)})"
+        for offset in range(-bounce_window, bounce_window + 1):
+
+            title = f"(frame - {-offset})" if offset <= 0 else f"(frame + {offset})"
+            j = offset + i
+            f = real_frames[j] if 0 <= j < len(real_frames) and real_frames[j] >= 2 else None
+            
+            if f is None:
+                res.update({f"{k}{title}": np.nan for k in FEATURES})
             else:
-                disparity_title = f"(frame - {abs(current_disparity)})"
 
-            res[f"SPEED{disparity_title}"] = np.nan
+                s = ball_tracker[f]
 
-            res[f"VX{disparity_title}"] = np.nan
-            res[f"VY{disparity_title}"] = np.nan
+                vx, vy = s["velocity"] if isinstance(s.get("velocity"), list) else (np.nan, np.nan)
 
-            res[f"ANGLE{disparity_title}"] = np.nan
+                hx, hy = s["homography location"] if isinstance(s.get("homography location"), list) else (np.nan, np.nan)
 
-            res[f"HOMOGRAPHY X{disparity_title}"] = np.nan
-            res[f"HOMOGRAPHY Y{disparity_title}"] = np.nan
+                dists = [np.hypot(p["homography location"][0] - hx, p["homography location"][1] - hy)
+                        for p in predictions_dict.get(f, []) if p["class"] != "ball" and p.get("box")]
+                est = s.get("estimation")
 
-            res[f"DISTANCE FROM NEAREST PLAYER{disparity_title}"] = np.nan
-
-            res[f"ESTIMATION{disparity_title}"] = np.nan
-
-            current_disparity -= 1
-            start_frame += 1
-
-        while start_frame <= len(ball_tracker) and start_frame <= end_frame:
-
-            if current_disparity < 0:
-                disparity_title = f"(frame + {abs(current_disparity)})"
-            else:
-                disparity_title = f"(frame - {abs(current_disparity)})"
-
-            current_frame_stats = ball_tracker.get(start_frame, {})
-
-            current_frame_speed = current_frame_stats.get("speed", np.nan)
-            res[f"SPEED{disparity_title}"] = current_frame_speed
-
-            current_frame_velocity = current_frame_stats.get("velocity", np.nan)
-            if not isinstance(current_frame_velocity, tuple):
-                current_frame_vx, current_frame_vy = np.nan, np.nan
-            else:
-                current_frame_vx, current_frame_vy = current_frame_velocity
-
-            res[f"VX{disparity_title}"] = current_frame_vx
-            res[f"VY{disparity_title}"] = current_frame_vy
-
-            current_frame_angle = current_frame_stats.get("angle", np.nan)
-            res[f"ANGLE{disparity_title}"] = current_frame_angle
-
-            current_frame_homography_location = current_frame_stats.get("homography location", np.nan)
-            if not isinstance(current_frame_homography_location, tuple):
-                current_frame_homography_x, current_frame_homography_y = np.nan, np.nan
-            else:
-                current_frame_homography_x, current_frame_homography_y = current_frame_homography_location
-
-            res[f"HOMOGRAPHY X{disparity_title}"] = current_frame_homography_x
-            res[f"HOMOGRAPHY Y{disparity_title}"] = current_frame_homography_y
-
-            current_predictions = predictions_dict.get(frame_id, [])
-            closest_player_to_ball = None
-            for pred in current_predictions:
-
-                if pred['class'] == "ball" or not pred.get('box'): continue
-
-                playerx, playery = pred['homography location']
-
-                current_pixels_away = np.hypot(playerx - current_frame_homography_x, playery - current_frame_homography_y)
-                        
-                if closest_player_to_ball is None:
-        
-                    closest_player_to_ball = [pred['homography location'], current_pixels_away]
-        
-                else:
-        
-                    if current_pixels_away < closest_player_to_ball[1]:
-                        closest_player_to_ball = [pred['homography location'], current_pixels_away]
-
-            if closest_player_to_ball is not None:
-                distance_to_closest_player = closest_player_to_ball[1]
-            else:
-                distance_to_closest_player = np.nan
-            res[f"DISTANCE FROM NEAREST PLAYER{disparity_title}"] = distance_to_closest_player
-
-            current_frame_is_estimation = current_frame_stats.get("estimation", np.nan)
-            if np.isnan(current_frame_is_estimation):
-                res[f"ESTIMATION{disparity_title}"] = np.nan
-            else:
-                res[f"ESTIMATION{disparity_title}"] = int(current_frame_is_estimation)
-
-            current_disparity -= 1
-            start_frame += 1
-
-        while start_frame <= end_frame:
-
-            if current_disparity < 0:
-                disparity_title = f"(frame + {abs(current_disparity)})"
-            else:
-                disparity_title = f"(frame - {abs(current_disparity)})"
-
-            res[f"SPEED{disparity_title}"] = np.nan
-
-            res[f"VX{disparity_title}"] = np.nan
-            res[f"VY{disparity_title}"] = np.nan
-
-            res[f"ANGLE{disparity_title}"] = np.nan
-
-            res[f"HOMOGRAPHY X{disparity_title}"] = np.nan
-            res[f"HOMOGRAPHY Y{disparity_title}"] = np.nan
-
-            res[f"DISTANCE FROM NEAREST PLAYER{disparity_title}"] = np.nan
-
-            res[f"ESTIMATION{disparity_title}"] = np.nan
-
-            current_disparity -= 1
-            start_frame += 1
+                res.update({
+                    f"SPEED{title}": s.get("speed", np.nan),
+                    f"VX{title}": vx, f"VY{title}": vy,
+                    f"ANGLE{title}": s.get("angle", np.nan),
+                    f"HOMOGRAPHY X{title}": hx, f"HOMOGRAPHY Y{title}": hy,
+                    f"DISTANCE FROM NEAREST PLAYER{title}": min(dists) if dists else np.nan,
+                    f"ESTIMATION{title}": np.nan if est is None else int(est),
+                })
 
         return res
            
     frame_id = 1
 
-    """
-    
-    Features:
-
-        - Speed
-        - Velocity
-        - Homography Location
-        - Angle
-
-    Rolling window of +- 5
-    
-    """
-
     rows = []
-
+    
     while frame_id < len(ball_tracker):
 
-        rolling_windows = get_windows(frame_id=frame_id, ball_tracker=ball_tracker, predictions_dict=predictions_dict, bounce_window=bounce_window)
+        if ball_tracker.get(frame_id).get("repeat_frame"):
 
-        if frame_id in bounces:
+            frame_id += 1
+            continue
 
-            rolling_windows['LABEL'] = 1
+        rolling_windows = get_windows(
+            frame_id=frame_id, 
+            ball_tracker=ball_tracker, 
+            predictions_dict=predictions_dict, 
+            bounce_window=bounce_window,
+            real_frames=real_frames
+        )
 
-        elif frame_id in hits:
-
-            rolling_windows['LABEL'] = 2
-
-        else:
-
-            rolling_windows['LABEL'] = 0
-
-        rolling_windows['VIDEO_ID'] = VIDEO_FILENAME
+        rolling_windows['FRAME'] = frame_id
 
         rows.append(rolling_windows)
         frame_id += 1
@@ -205,7 +142,3 @@ def get_training_dataframe(
     training_data = pd.DataFrame(rows)
 
     return training_data
-
-if __name__ == "__main__":
-
-    pass

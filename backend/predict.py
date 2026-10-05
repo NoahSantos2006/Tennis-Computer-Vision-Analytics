@@ -4,18 +4,18 @@ import json
 import numpy as np
 from pathlib import Path
 import pickle
-from concurrent.futures import ThreadPoolExecutor, as_completed, wait, FIRST_COMPLETED
+from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
 
 import xgboost as xgb
 
 from dotenv import load_dotenv
 import os
-import time
+import time, random
 
 import threading
 
 from inference_sdk import InferenceHTTPClient
-from inference_sdk.http.errors import HTTPCallErrorError
+from inference_sdk.http.errors import HTTPCallErrorError, HTTPClientError
 
 from backend.scripts.side_functions import run_predictions, get_bounces
 from backend.scripts.ball_tracker import BallTracker
@@ -26,7 +26,20 @@ load_dotenv()
 import json
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS"))
+<<<<<<< HEAD
 
+=======
+WORKSPACE_NAME = os.getenv("WORKSPACE_NAME")
+WORKFLOW_ID = os.getenv("WORKFLOW_ID")
+WORKFLOW_ID_WITH_COURT_POINTS = os.getenv("WORKFLOW_ID_WITH_COURT_POINTS")
+MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS"))
+
+def is_repeat(frame, prev):
+    a = cv2.cvtColor(cv2.resize(frame, (480, 270)), cv2.COLOR_BGR2GRAY)
+    b = cv2.cvtColor(cv2.resize(prev, (480, 270)), cv2.COLOR_BGR2GRAY)
+    return np.count_nonzero(cv2.absdiff(a, b) > 20) < 20
+
+>>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 def predict(
         video_path: Path,
         OUTPUT_DIR: Path,
@@ -39,7 +52,7 @@ def predict(
     
     parts = video_path.parts
 
-    VIDEO_FILENAME = parts[-1].split(".")[0].split("_")[0]
+    VIDEO_FILENAME = parts[-1].split(".")[0]
 
     # example: input/make/dunk/make4.mp4
     INPUT_VIDEO = str(video_path)
@@ -68,24 +81,48 @@ def predict(
 
         if frame_id == 1 or frame_id % 50 == 0:
             
-            try:
+            for attempt in range(MAX_ATTEMPTS):
 
+<<<<<<< HEAD
                 data = client.run_workflow(
                     workflow_id=f"tennis-object-detection-with-court-points",
                     workspace_name="noahs-workspace-kg24g",
                     images={"image": frame},
                 )[0]
+=======
+                try:
+>>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 
-            except HTTPCallErrorError as e:
+                    data = client.run_workflow(
+                        workflow_id=WORKFLOW_ID_WITH_COURT_POINTS,
+                        workspace_name=WORKSPACE_NAME,
+                        images={"image": frame},
+                    )[0]
+                    break
 
-                print(
-                    f"Roboflow request failed. "
-                    f"Retrying in {2}s "
-                )
-                time.sleep(2)
+                except HTTPCallErrorError as e:
+
+                    delay = min(2 ** attempt, 30) + random.random()
+
+                    print(
+                        f" Roboflow request failed. "
+                        f"Retrying in {delay}s (on attempt {attempt}) "
+                    )
+                    time.sleep(delay)
+
+                except HTTPClientError as e:
+
+                    delay = min(2 ** attempt, 30) + random.random()
+                    
+                    print(
+                        f" Too many requests. "
+                        f"Retrying in {delay}s (on attempt {attempt}) "
+                    )
+                    time.sleep(delay)
 
         else:
 
+<<<<<<< HEAD
             try:
 
                 data = client.run_workflow(
@@ -95,17 +132,42 @@ def predict(
                 )[0]
 
             except HTTPCallErrorError as e:
+=======
+            for attempt in range(MAX_ATTEMPTS):
+>>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
             
-                print(
-                    f"Roboflow request failed. "
-                    f"Retrying in {2}s "
-                )
-                time.sleep(2)
+                try:
+
+                    data = client.run_workflow(
+                        workflow_id=WORKFLOW_ID,
+                        workspace_name=WORKSPACE_NAME,
+                        images={"image": frame},
+                    )[0]
+                    break
+
+                except HTTPCallErrorError as e:
+
+                    delay = min(2 ** attempt, 30) + random.random()
+
+                    print(
+                        f" Roboflow request failed. "
+                        f"Retrying in {delay}s (on attempt {attempt}) "
+                    )
+                    time.sleep(delay)
+
+                except HTTPClientError as e:
+
+                    delay = min(2 ** attempt, 30) + random.random()
+                    
+                    print(
+                        f" Too many requests. "
+                        f"Retrying in {delay}s (on attempt {attempt}) "
+                    )
+                    time.sleep(delay)
         
         if not data:
 
-            print(f"Could not find data on frame {frame_id}.")
-            os._exit(1)
+            return frame_id, None
 
         result = data.get("predictions", {}).get("predictions", [])
 
@@ -130,6 +192,10 @@ def predict(
         video_finished = False
         previous_frame = None
         repeat_frames = set()
+<<<<<<< HEAD
+=======
+        failed_frames = []
+>>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 
         while pending or not video_finished:
 
@@ -141,12 +207,20 @@ def predict(
                     break
 
                 if previous_frame is not None:
+<<<<<<< HEAD
                 
                     diff = cv2.absdiff(previous_frame, frame)
                     diff_mean = np.mean(diff)
         
                     if diff_mean < MEAN_DIFF_THRESHOLD:
                         repeat_frames.add(frame_id)
+=======
+
+                    if is_repeat(frame=frame, prev=previous_frame):
+
+                        repeat_frames.add(frame_id)
+                        frame_id += 1
+>>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
                         continue
 
                 future = executor.submit(
@@ -156,6 +230,7 @@ def predict(
                 )
 
                 pending.add(future)
+                previous_frame = frame
                 frame_id += 1
 
             if not pending:
@@ -170,6 +245,11 @@ def predict(
             for future in done:
 
                 result_frame_id, preds = future.result()
+
+                if preds is None:
+
+                    failed_frames.append(result_frame_id)
+                    preds = []
 
                 predictions_by_frame[result_frame_id] = preds
 
@@ -230,10 +310,10 @@ def predict(
     XGBoost_model.load_model(MODEL_PATH)
 
     bounce_detection_dict = get_bounces(
-        ball_tracker_predictions=ball_tracker.tracker,
-        vision_model_predictions=predictions_by_frame,
-        XGBoost_model=XGBoost_model,
-        STATUS_PATH=STATUS_PATH
+        VIDEO_FILENAME = VIDEO_FILENAME,
+        OUTPUT_PATH = OUTPUT_DIR,
+        MODEL = XGBoost_model,
+        BALL_TRACKER_PREDICTIONS = ball_tracker.tracker
     )
 
     update_status(
@@ -246,6 +326,7 @@ def predict(
 
     return bounce_detection_dict, fps
 
+<<<<<<< HEAD
 def validate_video(
     INPUT_PATH: Path,
     VIDEO_FILENAME: str,
@@ -322,6 +403,8 @@ def validate_video(
     
     return 0           
 
+=======
+>>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 def analyze_video(
     VIDEO_FILENAME: str,
     INPUT_PATH: Path,
@@ -340,16 +423,12 @@ def analyze_video(
         os._exit(1)
 
     BALL_TRACKING_DIRECTORY = os.path.join(OUTPUT_PATH, "BallTracking", f"{VIDEO_FILENAME}")
-    VALIDATED_VIDEOS = os.path.join(INPUT_PATH, "validated_videos.txt")
-
-    if not os.path.isfile(VALIDATED_VIDEOS):
-        with open(VALIDATED_VIDEOS, "w") as f:
-            pass
 
     if not os.path.isdir(BALL_TRACKING_DIRECTORY):
 
         os.makedirs(BALL_TRACKING_DIRECTORY, exist_ok=True)
 
+<<<<<<< HEAD
     with open(VALIDATED_VIDEOS, "r") as f:
 
         validated_videos_arr = f.read()
@@ -381,6 +460,8 @@ def analyze_video(
 
     VIDEO_PATH = Path(os.path.join(INPUT_PATH, "validated_videos", f"{VIDEO_FILENAME}.mp4"))
 
+=======
+>>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
     bounce_detection_dict, fps = predict(
         video_path=VIDEO_PATH,
         OUTPUT_DIR=OUTPUT_PATH,
@@ -401,21 +482,3 @@ def analyze_video(
 
     with open(results_path, "w") as f:
         json.dump(results, f)
-
-if __name__ == "__main__":
-
-    video_filename = f"pctennis16"
-    MODEL_PATH = os.path.join("models", "model.ubj")
-
-    analyze_video(
-        VIDEO_FILENAME=video_filename,
-        INPUT_PATH="input",
-        OUTPUT_PATH="output",
-        JOB_ID="47239814670123",
-        MODEL_PATH=MODEL_PATH,
-    )
-
-    
-
-
-

@@ -25,7 +25,7 @@ MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
 
 @asynccontextmanager
 async def lifespan(app):
-    task = asyncio.create_task(sweeper_loop())
+    task = asyncio.create_task(sweeper_loop(JOBS_DIR=JOBS_DIR))
     yield
     task.cancel()
 
@@ -54,6 +54,12 @@ def create_job():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     return job_id, input_dir, output_dir
+
+
+@app.get("/health")
+def health():
+
+    return {"status": "ok"}
 
 @app.get("/")
 def home():

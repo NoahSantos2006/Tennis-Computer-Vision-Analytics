@@ -33,14 +33,26 @@ Point it at broadcast tennis footage and it will:
 
 ## How it works
 
-```mermaid
-flowchart LR
-    A[🎥 Upload video] --> B[Skip repeat frames]
-    B --> C[Roboflow detection<br/>ball · players · court]
-    C --> D[Homography<br/>camera → court]
-    D --> E[Ball tracking]
-    E --> F[XGBoost<br/>bounce / hit]
-    F --> G[📊 Shot chart]
+```text
+  Upload video
+       │
+       ▼
+  Skip repeat frames          duplicated frames are detected and ignored
+       │
+       ▼
+  Roboflow detection          ball · players · court keypoints
+       │
+       ▼
+  Homography                  camera view → top-down court
+       │
+       ▼
+  Ball tracking               real ball, gaps filled, false positives removed
+       │
+       ▼
+  XGBoost                     bounce / hit / nothing for every frame
+       │
+       ▼
+  Shot chart                  rally video + court diagram in the web app
 ```
 
 <details>

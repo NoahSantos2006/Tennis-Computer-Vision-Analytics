@@ -33,27 +33,9 @@ Point it at broadcast tennis footage and it will:
 
 ## How it works
 
-```text
-  Upload video
-       │
-       ▼
-  Skip repeat frames          duplicated frames are detected and ignored
-       │
-       ▼
-  Roboflow detection          ball · players · court keypoints
-       │
-       ▼
-  Homography                  camera view → top-down court
-       │
-       ▼
-  Ball tracking               real ball, gaps filled, false positives removed
-       │
-       ▼
-  XGBoost                     bounce / hit / nothing for every frame
-       │
-       ▼
-  Shot chart                  rally video + court diagram in the web app
-```
+<p align="center">
+  <img src="docs/pipeline.svg" alt="Pipeline: upload video, skip repeat frames, Roboflow detection, homography, ball tracking, XGBoost bounce/hit classification, shot chart" width="100%">
+</p>
 
 <details>
 <summary><b>Step by step</b></summary>

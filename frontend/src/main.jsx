@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
 
+import ServerWakeup from "./ServerWakeup.jsx"
 import VideoUpload from "./VideoUpload.jsx";
 import ShotChart from "./ShotChart.jsx";
 import Header from "./header.jsx";
@@ -12,39 +13,17 @@ import {
 } from "react-router-dom";
 
 function App() {
-
   return (
-    <BrowserRouter>
-
-      <Header />
-
-      <Routes>
-
-        <Route
-          path="/"
-          element={
-            <div>
-              <VideoUpload />
-            </div>
-          }
-        />
-
-        <Route
-          path="/results"
-          element={
-            <div>
-              <ShotChart />
-            </div>
-          }
-        />
-
-      </Routes>
-    
-    </BrowserRouter>
+    <ServerWakeup apiUrl={import.meta.env.VITE_API_URL}>
+      <BrowserRouter>
+        <Header />
+        <Routes>
+          <Route path="/" element={<VideoUpload />} />
+          <Route path="/results" element={<ShotChart />} />
+        </Routes>
+      </BrowserRouter>
+    </ServerWakeup>
   );
-
-  
-
 }
 
 // find html element name 'root' and turn it into a React-controlled area and display App component inside it

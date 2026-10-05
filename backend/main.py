@@ -55,6 +55,12 @@ def create_job():
 
     return job_id, input_dir, output_dir
 
+
+@app.get("/health")
+def health():
+
+    return {"status": "ok"}
+
 @app.get("/")
 def home():
     return {'message': 'CourtVision is running'}

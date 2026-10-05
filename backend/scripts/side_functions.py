@@ -155,7 +155,9 @@ def get_bounces(
 
         if frame_id in bounces: label = 1
         elif frame_id in hits: label = 2
-        else: label = 0
+        else:
+            frame_id += 1
+            continue
 
         results[frame_id] = {
             "label": label,

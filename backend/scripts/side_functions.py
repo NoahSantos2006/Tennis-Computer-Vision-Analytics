@@ -149,7 +149,7 @@ def get_bounces(
 
     frame_id = 1
     results = {}
-    while frame_id < len(df):
+    while frame_id < len(BALL_TRACKER_PREDICTIONS):
 
         location = BALL_TRACKER_PREDICTIONS[frame_id].get("homography location", None)
 

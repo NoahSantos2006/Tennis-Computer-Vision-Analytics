@@ -83,8 +83,6 @@ async def analyze(
         with open(video_path, "wb") as buffer:
             shutil.copyfileobj(video.file, buffer)
 
-        print(f"File updated and copied into {video_path}")
-
         background_tasks.add_task(
             func=analyze_video,
             VIDEO_FILENAME=VIDEO_FILENAME,
@@ -101,8 +99,6 @@ async def analyze(
         }
 
     except Exception as e:
-
-        print(f"Exception: {e}")
 
         return {
             "ok": False

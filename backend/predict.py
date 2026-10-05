@@ -13,7 +13,6 @@ import os
 import time
 
 import threading
-import psutil
 
 from inference_sdk import InferenceHTTPClient
 from inference_sdk.http.errors import HTTPCallErrorError
@@ -27,188 +26,15 @@ load_dotenv()
 import json
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS"))
-VISION_MODEL_ID = int(os.getenv("VISION_MODEL_ID"))
 
-def predict_without_threads(
+def predict(
         video_path: Path,
         OUTPUT_DIR: Path,
         MODEL_PATH: Path, 
         STATUS_PATH: Path,
         api_key: str,
-        vision_model_id: int,
-    ) -> dict:
-    
-    parts = video_path.parts
-
-    VIDEO_FILENAME = parts[-1].split(".")[0].split("_")[0]
-
-    # example: input/make/dunk/make4.mp4
-    INPUT_VIDEO = str(video_path)
-
-    cap = cv2.VideoCapture(INPUT_VIDEO)
-    if not cap.isOpened():
-        print(f"Could not open video {INPUT_VIDEO}")
-        os._exit(1)
-    
-    fps = cap.get(cv2.CAP_PROP_FPS)
-
-    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-
-    client = InferenceHTTPClient.init(
-        api_url="https://serverless.roboflow.com",
-        api_key=api_key
-    )
-
-    court_detection_points_by_frame = {}
-    predictions_by_frame = {}
-
-    def predict_frame(
-        frame_id: int, 
-        frame: np.array,
-    ) -> tuple:
-
-        if frame_id == 1 or frame_id % 50 == 0:
-
-            try:
-
-                data = client.run_workflow(
-                    workflow_id=f"tennis-object-detection-model-{vision_model_id}-with-court-points",
-                    workspace_name="noahs-workspace-kg24g",
-                    images={"image": frame},
-                )[0]
-
-            except HTTPCallErrorError as e:
-
-                print(
-                    f"Roboflow request failed. "
-                    f"Retrying in {2}s "
-                )
-                time.sleep(2)
-
-        else:
-
-            try:
-
-                data = client.run_workflow(
-                    workflow_id=f"tennis-object-detection-model-{vision_model_id}",
-                    workspace_name="noahs-workspace-kg24g",
-                    images={"image": frame},
-                )[0]
-
-            except HTTPCallErrorError as e:
-            
-                print(
-                    f"Roboflow request failed. "
-                    f"Retrying in {2}s "
-                )
-                time.sleep(2)
-
-        if not data:
-
-            print(f"Could not find data on frame {frame_id}.")
-            predictions_by_frame[frame_id] = {}
-
-        result = data.get("predictions", {}).get("predictions", [])
-        predictions_by_frame[frame_id] = result
-
-        court_detection_data = data.get("court_detection_predictions", {})
-        if court_detection_data:
-
-            if court_detection_data.get("predictions", []):
-
-                court_detection_points = court_detection_data.get('predictions', [])[0].get("keypoints", [])
-                court_detection_points_by_frame[frame_id] = court_detection_points      
-
-    frame_id = 1
-
-    while True:
-
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        predict_frame(
-            frame_id=frame_id,
-            frame=frame,
-        )
-
-        update_status(
-            status_file=STATUS_PATH,
-            status="in progress",
-            stage="Processing Frames",
-            current_frame=frame_id,
-            total_frames=total_frames
-        )
-
-        frame_id += 1
-
-    cap.release()
-
-    PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"
-    if not os.path.isdir(PREDICTIONS_DIRECTORY):
-        os.makedirs(PREDICTIONS_DIRECTORY, exist_ok=True)
-    predictions_text_path = f"{OUTPUT_DIR}/predictions/{VIDEO_FILENAME}_predictions.txt"
-    with open(predictions_text_path, "w") as f:
-
-        json.dump(predictions_by_frame, f)
-
-    COURT_POINTS_DIRECTORY = OUTPUT_DIR / "court_points"
-    if not os.path.isdir(COURT_POINTS_DIRECTORY):
-        os.makedirs(COURT_POINTS_DIRECTORY, exist_ok=True)
-    court_points_path = f"{OUTPUT_DIR}/court_points/{VIDEO_FILENAME}_court_points.json"    
-    with open(court_points_path, "w") as f:
-
-        json.dump(court_detection_points_by_frame, f)
-
-    BALL_TRACKER_CLASS_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking_class.pkl")
-    BALL_TRACKER_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking.json")
-
-    predictions_by_frame, ball_tracker = run_predictions(
-        COURT_POINTS_INPUT_FILE=court_points_path, 
-        PREDICTIONS_INPUT_FILE=predictions_text_path, 
-        ball_tracker=BallTracker(COURT_POINTS_FILE=court_points_path)
-    )
-
-    with open(BALL_TRACKER_CLASS_FILE, "wb") as f:
-
-        pickle.dump(ball_tracker, f)
-
-    with open(BALL_TRACKER_FILE, "w") as f:
-
-        json.dump(ball_tracker.tracker, f)
-
-    with open(BALL_TRACKER_CLASS_FILE, "rb") as f:
-
-        ball_tracker = pickle.load(f)
-
-    XGBoost_model = xgb.XGBClassifier()
-    XGBoost_model.load_model(MODEL_PATH)
-
-    bounce_detection_dict = get_bounces(
-        ball_tracker_predictions=ball_tracker.tracker,
-        vision_model_predictions=predictions_by_frame,
-        XGBoost_model=XGBoost_model,
-        STATUS_PATH=STATUS_PATH
-    )
-
-    update_status(
-        status_file=STATUS_PATH,
-        status="finished",
-        stage="",
-        current_frame=total_frames,
-        total_frames=total_frames
-    )
-
-    return bounce_detection_dict, fps
-
-def predict_with_threads(
-        video_path: Path,
-        OUTPUT_DIR: Path,
-        MODEL_PATH: Path, 
-        STATUS_PATH: Path,
-        api_key: str,
-        vision_model_id: int = VISION_MODEL_ID,
         MAX_WORKERS: int = MAX_WORKERS,
+        MEAN_DIFF_THRESHOLD: float = 0.1
     ) -> dict:
     
     parts = video_path.parts
@@ -245,7 +71,7 @@ def predict_with_threads(
             try:
 
                 data = client.run_workflow(
-                    workflow_id=f"tennis-object-detection-model-{vision_model_id}-with-court-points",
+                    workflow_id=f"tennis-object-detection-with-court-points",
                     workspace_name="noahs-workspace-kg24g",
                     images={"image": frame},
                 )[0]
@@ -263,7 +89,7 @@ def predict_with_threads(
             try:
 
                 data = client.run_workflow(
-                    workflow_id=f"tennis-object-detection-model-{vision_model_id}",
+                    workflow_id=f"tennis-object-detection",
                     workspace_name="noahs-workspace-kg24g",
                     images={"image": frame},
                 )[0]
@@ -302,6 +128,8 @@ def predict_with_threads(
         frame_id = 1
         completed_frames = 0
         video_finished = False
+        previous_frame = None
+        repeat_frames = set()
 
         while pending or not video_finished:
 
@@ -311,6 +139,15 @@ def predict_with_threads(
                 if not ret:
                     video_finished = True
                     break
+
+                if previous_frame is not None:
+                
+                    diff = cv2.absdiff(previous_frame, frame)
+                    diff_mean = np.mean(diff)
+        
+                    if diff_mean < MEAN_DIFF_THRESHOLD:
+                        repeat_frames.add(frame_id)
+                        continue
 
                 future = executor.submit(
                     predict_frame,
@@ -342,9 +179,13 @@ def predict_with_threads(
                     status_file=STATUS_PATH,
                     status="in progress",
                     stage="Processing Frames",
-                    current_frame=completed_frames,
+                    current_frame=completed_frames + len(repeat_frames),
                     total_frames=total_frames
                 )
+
+            for frame in repeat_frames:
+
+                predictions_by_frame[frame] = "Repeat Frame"
 
     cap.release()
 
@@ -422,7 +263,6 @@ def validate_video(
     cap = cv2.VideoCapture(VIDEO_PATH)
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     fps = cap.get(cv2.CAP_PROP_FPS)
-    video_length = total_frames / fps
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
@@ -488,7 +328,6 @@ def analyze_video(
     OUTPUT_PATH: Path,
     JOB_ID: str,
     MODEL_PATH: Path,
-    vision_model_id=VISION_MODEL_ID,
 ) -> tuple:
 
     ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")
@@ -542,13 +381,12 @@ def analyze_video(
 
     VIDEO_PATH = Path(os.path.join(INPUT_PATH, "validated_videos", f"{VIDEO_FILENAME}.mp4"))
 
-    bounce_detection_dict, fps = predict_with_threads(
+    bounce_detection_dict, fps = predict(
         video_path=VIDEO_PATH,
         OUTPUT_DIR=OUTPUT_PATH,
         MODEL_PATH=MODEL_PATH,
         STATUS_PATH=STATUS_PATH,
         api_key=ROBOFLOW_API_KEY, 
-        vision_model_id=vision_model_id
     )
 
     results = {

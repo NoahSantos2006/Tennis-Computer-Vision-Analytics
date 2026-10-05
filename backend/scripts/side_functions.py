@@ -347,10 +347,28 @@ def find_angles(
     while frame_id < len(ball_tracker):
         
         if (
-            frame_id < 2 or
-            ball_tracker[frame_id - 1]['vision model location'] == (-1, -1) or
+            ball_tracker[frame_id]['repeat_frame'] or
+            frame_id < 2
+        ):
+
+            frame_id += 1
+            continue
+
+        prev_frame = frame_id - 1
+        next_frame = frame_id + 1
+
+        while ball_tracker[prev_frame]['repeat_frame']:
+
+            prev_frame -= 1
+
+        while ball_tracker[next_frame]['repeat_frame']:
+
+            next_frame += 1
+
+        if (
+            ball_tracker[prev_frame]['vision model location'] == (-1, -1) or
             ball_tracker[frame_id]['vision model location'] == (-1, -1) or
-            ball_tracker[frame_id + 1]['vision model location'] == (-1, -1)
+            ball_tracker[next_frame]['vision model location'] == (-1, -1)
 
         ):
 
@@ -358,9 +376,9 @@ def find_angles(
             continue
 
         # find locations
-        x1, y1 = ball_tracker[frame_id - 1]['vision model location']
+        x1, y1 = ball_tracker[prev_frame]['vision model location']
         x2, y2 = ball_tracker[frame_id]['vision model location']
-        x3, y3 = ball_tracker[frame_id + 1]['vision model location']
+        x3, y3 = ball_tracker[next_frame]['vision model location']
 
         vx = (x3 - x1) / 2
         vy = (y3 - y1) / 2
@@ -424,32 +442,42 @@ def run_predictions(
 
         predictions_array = predictions_by_frame.get(str(frame_id))
 
-        current_ball_locations = []
-    
-        for pred in predictions_array:
+        if predictions_array == "Repeat Frame":
 
-            if pred['class'] == 'ball' and pred['confidence'] >= 0.5:
+            ball_tracker.update(
+                frame_id=frame_id,
+                ball_locations=[],
+                repeat_frame=True
+            )
 
-                coordinates, center = get_coordinates_and_center(prediction=pred)
-                current_ball_locations.append(center)
+        else:
 
-            if pred['class'] != 'ball' and 'box' in pred:
+            current_ball_locations = []
+        
+            for pred in predictions_array:
 
-                if frame_id in court_points:
+                if pred['class'] == 'ball' and pred['confidence'] >= 0.5:
 
-                    HOMOGRAPHY_MATRIX = compute_homography(COURT_POINTS_PATH=COURT_POINTS_INPUT_FILE, frame_id=frame_id)
+                    coordinates, center = get_coordinates_and_center(prediction=pred)
+                    current_ball_locations.append(center)
 
-                location = detection_of_court_points(
-                    box=np.array(pred['box'], dtype=np.float32),
-                    H=HOMOGRAPHY_MATRIX
-                )
+                if pred['class'] != 'ball' and 'box' in pred:
 
-                pred['homography location'] = location
+                    if frame_id in court_points:
 
-        ball_tracker.update(
-            frame_id=frame_id, 
-            ball_locations=current_ball_locations
-        )
+                        HOMOGRAPHY_MATRIX = compute_homography(COURT_POINTS_PATH=COURT_POINTS_INPUT_FILE, frame_id=frame_id)
+
+                    location = detection_of_court_points(
+                        box=np.array(pred['box'], dtype=np.float32),
+                        H=HOMOGRAPHY_MATRIX
+                    )
+
+                    pred['homography location'] = location
+
+            ball_tracker.update(
+                frame_id=frame_id, 
+                ball_locations=current_ball_locations
+            )
 
     with open(PREDICTIONS_INPUT_FILE, "w") as f:
     

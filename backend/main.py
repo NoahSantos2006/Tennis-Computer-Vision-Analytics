@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STORAGE_DIRECTORY = PROJECT_ROOT / "storage"
 
 JOBS_DIR = STORAGE_DIRECTORY / "jobs"
+os.makedirs(JOBS_DIR, exist_ok=True)
 
 MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
 

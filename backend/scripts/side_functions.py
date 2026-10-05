@@ -182,33 +182,6 @@ def find_angles(ball_tracker_class: BallTracker) -> BallTracker:
 
     # bounce detection
     while frame_id < len(ball_tracker):
-<<<<<<< HEAD
-        
-        if (
-            ball_tracker[frame_id]['repeat_frame'] or
-            frame_id < 2
-        ):
-
-            frame_id += 1
-            continue
-
-        prev_frame = frame_id - 1
-        next_frame = frame_id + 1
-
-        while ball_tracker[prev_frame]['repeat_frame']:
-
-            prev_frame -= 1
-
-        while ball_tracker[next_frame]['repeat_frame']:
-
-            next_frame += 1
-
-        if (
-            ball_tracker[prev_frame]['vision model location'] == (-1, -1) or
-            ball_tracker[frame_id]['vision model location'] == (-1, -1) or
-            ball_tracker[next_frame]['vision model location'] == (-1, -1)
-=======
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 
         if (
             ball_tracker[frame_id]['repeat_frame'] or

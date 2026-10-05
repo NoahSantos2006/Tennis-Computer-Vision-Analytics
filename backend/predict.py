@@ -26,9 +26,6 @@ load_dotenv()
 import json
 
 MAX_WORKERS = int(os.getenv("MAX_WORKERS"))
-<<<<<<< HEAD
-
-=======
 WORKSPACE_NAME = os.getenv("WORKSPACE_NAME")
 WORKFLOW_ID = os.getenv("WORKFLOW_ID")
 WORKFLOW_ID_WITH_COURT_POINTS = os.getenv("WORKFLOW_ID_WITH_COURT_POINTS")
@@ -39,7 +36,6 @@ def is_repeat(frame, prev):
     b = cv2.cvtColor(cv2.resize(prev, (480, 270)), cv2.COLOR_BGR2GRAY)
     return np.count_nonzero(cv2.absdiff(a, b) > 20) < 20
 
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 def predict(
         video_path: Path,
         OUTPUT_DIR: Path,
@@ -83,15 +79,7 @@ def predict(
             
             for attempt in range(MAX_ATTEMPTS):
 
-<<<<<<< HEAD
-                data = client.run_workflow(
-                    workflow_id=f"tennis-object-detection-with-court-points",
-                    workspace_name="noahs-workspace-kg24g",
-                    images={"image": frame},
-                )[0]
-=======
                 try:
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 
                     data = client.run_workflow(
                         workflow_id=WORKFLOW_ID_WITH_COURT_POINTS,
@@ -122,19 +110,7 @@ def predict(
 
         else:
 
-<<<<<<< HEAD
-            try:
-
-                data = client.run_workflow(
-                    workflow_id=f"tennis-object-detection",
-                    workspace_name="noahs-workspace-kg24g",
-                    images={"image": frame},
-                )[0]
-
-            except HTTPCallErrorError as e:
-=======
             for attempt in range(MAX_ATTEMPTS):
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
             
                 try:
 
@@ -192,10 +168,7 @@ def predict(
         video_finished = False
         previous_frame = None
         repeat_frames = set()
-<<<<<<< HEAD
-=======
         failed_frames = []
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 
         while pending or not video_finished:
 
@@ -207,20 +180,11 @@ def predict(
                     break
 
                 if previous_frame is not None:
-<<<<<<< HEAD
-                
-                    diff = cv2.absdiff(previous_frame, frame)
-                    diff_mean = np.mean(diff)
-        
-                    if diff_mean < MEAN_DIFF_THRESHOLD:
-                        repeat_frames.add(frame_id)
-=======
 
                     if is_repeat(frame=frame, prev=previous_frame):
 
                         repeat_frames.add(frame_id)
                         frame_id += 1
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
                         continue
 
                 future = executor.submit(
@@ -326,85 +290,6 @@ def predict(
 
     return bounce_detection_dict, fps
 
-<<<<<<< HEAD
-def validate_video(
-    INPUT_PATH: Path,
-    VIDEO_FILENAME: str,
-    ALREADY_VALIDATED_PATH: Path,
-    STATUS_PATH: Path,
-    mean_diff_threshold: float = 0.1,
-):
-
-    VIDEO_PATH = os.path.join(INPUT_PATH, f"{VIDEO_FILENAME}.mp4")
-    VALIDATED_VIDEOS_DIRECTORY = os.path.join(INPUT_PATH, 'validated_videos')
-    if not os.path.isdir(VALIDATED_VIDEOS_DIRECTORY):
-        os.makedirs(VALIDATED_VIDEOS_DIRECTORY, exist_ok=True)
-    VALIDATED_VIDEO_PATH = os.path.join(VALIDATED_VIDEOS_DIRECTORY, f"{VIDEO_FILENAME}.mp4")
-
-    cap = cv2.VideoCapture(VIDEO_PATH)
-    total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-    fps = cap.get(cv2.CAP_PROP_FPS)
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-
-    previous_frame = None
-    repeat_frames = 0
-    frame_id = 1
-
-    all_repeat_frames = set()
-
-    out = cv2.VideoWriter(
-        filename=VALIDATED_VIDEO_PATH,
-        fourcc=cv2.VideoWriter_fourcc(*"mp4v"),
-        fps=fps,
-        frameSize=(width, height)
-    )
-
-    while True:
-
-        ret, frame = cap.read()
-        if not ret:
-            break
-
-        if previous_frame is not None:
-
-            diff = cv2.absdiff(previous_frame, frame)
-            diff_mean = np.mean(diff)
-
-            if diff_mean < mean_diff_threshold:
-                all_repeat_frames.add(frame_id)
-                repeat_frames += 1
-            else:
-                out.write(frame)
-
-        if repeat_frames > 0.25 * total_frames:
-        
-            print(f"Video is not valid for uploading. Try Again.")
-            cap.release()
-            return 1
-
-        previous_frame = frame.copy()
-
-        update_status(
-            status_file=STATUS_PATH,
-            status="in progress",
-            stage="Validating Video",
-            current_frame=frame_id,
-            total_frames=total_frames
-        )
-
-        frame_id += 1
-
-    cap.release()
-    out.release()
-
-    with open(ALREADY_VALIDATED_PATH, "a") as f:
-        f.write(f"{VIDEO_FILENAME}\n") 
-    
-    return 0           
-
-=======
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 def analyze_video(
     VIDEO_FILENAME: str,
     INPUT_PATH: Path,
@@ -428,40 +313,6 @@ def analyze_video(
 
         os.makedirs(BALL_TRACKING_DIRECTORY, exist_ok=True)
 
-<<<<<<< HEAD
-    with open(VALIDATED_VIDEOS, "r") as f:
-
-        validated_videos_arr = f.read()
-        validated_videos_arr = validated_videos_arr.split("\n")
-
-    validated = False
-    for vid_name in validated_videos_arr:
-
-        if VIDEO_FILENAME == vid_name:
-            validated = True
-            break
-
-    if not validated:
-
-        status_code = validate_video(
-            INPUT_PATH=INPUT_PATH, 
-            VIDEO_FILENAME=VIDEO_FILENAME, 
-            STATUS_PATH=STATUS_PATH,
-            ALREADY_VALIDATED_PATH=VALIDATED_VIDEOS
-        )
-
-        if status_code != 0: 
-
-            print(f"Video file is corrupted.")
-            VALIDATED_VIDEO_PATH = os.path.join(INPUT_PATH, 'validated_videos', f"{VIDEO_FILENAME}.mp4")
-            os.remove(VALIDATED_VIDEO_PATH)
-            os.remove(VIDEO_PATH)
-            os._exit(1)
-
-    VIDEO_PATH = Path(os.path.join(INPUT_PATH, "validated_videos", f"{VIDEO_FILENAME}.mp4"))
-
-=======
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
     bounce_detection_dict, fps = predict(
         video_path=VIDEO_PATH,
         OUTPUT_DIR=OUTPUT_PATH,

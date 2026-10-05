@@ -6,19 +6,12 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 
-<<<<<<< HEAD
-TENNIS_COURT_LENGTH = 23.77
-TENNIS_COURT_WIDTH = 10.97
-TENNIS_COURT_SCALE = 25
-TENNIS_COURT_PADDING = 30
-=======
 load_dotenv()
 
 TENNIS_COURT_LENGTH = float(os.getenv("TENNIS_COURT_LENGTH"))
 TENNIS_COURT_WIDTH = float(os.getenv("TENNIS_COURT_WIDTH"))
 TENNIS_COURT_SCALE = int(os.getenv("TENNIS_COURT_SCALE"))
 TENNIS_COURT_PADDING = int(os.getenv("TENNIS_COURT_PADDING"))
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
 
 
 def compute_homography(COURT_POINTS_PATH: Path, frame_id: int) -> np.array:
@@ -83,15 +76,9 @@ class BallTracker:
             max_consecutive_predictions=30, 
             max_displacement_px=300, 
             max_false_positive_count=15, 
-<<<<<<< HEAD
-            false_positives=set()
-        ):
-
-=======
             false_positives=None                                        
         ):
  
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841
         with open(COURT_POINTS_FILE, "r") as file:
  
             court_points = json.load(file)
@@ -362,186 +349,6 @@ class BallTracker:
             self.tracker[frame]['interpolation'] = True
          
     # ball_locations is an array of ball locations from the model detection (not homographical)
-<<<<<<< HEAD
-    def update(self, frame_id: int, ball_locations: list, allow_estimation: bool = True, repeat_frame: bool = False):
-
-        if repeat_frame:
-
-            self.tracker[int(frame_id)] = {'repeat_frame': True}  
-
-        else:
-
-            self.is_estimation = False
-            nearest_ball_location = {}
-            prediction_indices = {}
-
-            if frame_id in self.court_points:
-
-                self.HOMOGRAPHY_MATRIX = compute_homography(COURT_POINTS_PATH=self.COURT_POINTS_FILE, frame_id=frame_id)
-
-            if len(ball_locations) == 0:
-
-                if allow_estimation:
-                    # if we don't detect a ball we estimate using a simple slope
-                    chosen_ball_location = self.no_ball_found(frame_id=frame_id)
-                else:
-                    chosen_ball_location = (-1, -1)
-
-            elif len(ball_locations) == 1:
-
-                """
-                if there is only one ball location detected we check to see if it's plausible, else we estimate
-                """
-
-                # if the location found is a false positive
-                if ball_locations[0] in self.false_positives:
-
-                    chosen_ball_location = self.no_ball_found(frame_id=frame_id)
-
-                else:
-                    
-                    self.consecutive_no_detections = 0
-                    # if we are on the first frame then just pick the first one
-                    if frame_id <= 1:
-
-                        chosen_ball_location = ball_locations[0]
-
-                    else:
-
-                        prev_location = self.tracker[frame_id - 1]['vision model location']
-
-                        curr_x, curr_y = ball_locations[0]
-                        prev_x, prev_y = prev_location
-
-                        if prev_x == -1 and prev_y == -1:
-
-                            chosen_ball_location = curr_x, curr_y
-
-                        # if the ball location is too far from the previous ball location then we rule it as not the ball
-                        elif prev_x - self.MAX_DISPLACEMENT_PX > curr_x or curr_x > prev_x + self.MAX_DISPLACEMENT_PX:
-                            chosen_ball_location = self.estimate_ball_location(frame_id=frame_id, predictions=ball_locations)
-
-                        elif prev_y - self.MAX_DISPLACEMENT_PX > curr_y  or curr_y > prev_y + self.MAX_DISPLACEMENT_PX: 
-                            chosen_ball_location = self.estimate_ball_location(frame_id=frame_id, predictions=ball_locations)
-
-                        else:
-
-                            chosen_ball_location = ball_locations[0]
-
-            else:
-                self.consecutive_no_detections = 0
-
-                """
-                simple tracker for multiple ball predictions: chose closest from last frame
-
-                create a dictionary for each ball location and compare
-
-                use px
-
-                ex 
-                    prev ball location: (100, 100)
-
-                    preds = [(102, 103), (101, 105)]
-
-                    pred[0] = |102 - 100| + |103 - 100| = 2 + 3 = 5px away
-                    pred[1] = |101 - 100| + |105 - 100| = 1 + 5 = 6px away
-
-                    we keep a dictionary
-                """
-
-                # rule out self positives
-                valid_locations = [
-                    location
-                    for location in ball_locations
-                    if location not in self.false_positives
-                ]
-
-                if not valid_locations:
-                    if allow_estimation:
-                        chosen_ball_location = self.no_ball_found(
-                            frame_id=frame_id
-                        )
-                    else:
-                        chosen_ball_location = (-1, -1)
-                        self.is_estimation = True
-
-                elif frame_id <= 1 or frame_id - 1 not in self.tracker:
-                    # There is no previous frame to compare against.
-                    chosen_ball_location = valid_locations[0]
-
-                else:
-                    
-                    prev_x, prev_y = self.tracker[
-                        frame_id - 1
-                    ]["vision model location"]
-
-                    if (prev_x, prev_y) == (-1, -1):
-                        chosen_ball_location = valid_locations[0]
-                    else:
-                        chosen_ball_location = min(
-                            valid_locations,
-                            key=lambda location: (
-                                abs(location[0] - prev_x)
-                                + abs(location[1] - prev_y)
-                            )
-                        )
-            
-
-            # in case we have ties for detections that are n pixels away
-            if len(prediction_indices) > 1: ties = nearest_ball_location
-            else: ties = []
-
-            if chosen_ball_location != (-1, -1):
-                homography_location = self.compute_homographical_location(ball_location=chosen_ball_location)
-            else: 
-                homography_location = (-1, -1)
-
-            # reset consecutive esimations if the curernt frame's ball location is not an estimation
-            if self.is_estimation is False: self.consecutive_estimations = 0
-
-            # track all detections in case we find a false positive
-            self.detections_track[chosen_ball_location] = self.detections_track.get(chosen_ball_location, 0) + 1
-
-            # if we found a false positive or a location that has been still for more than [self.MAX_FALSE_POSITIVE_COUNT] frames then we deem it as a false positive
-            # also we don't count (-1, -1 as a false positive.)
-            if (
-                self.detections_track[chosen_ball_location] > self.MAX_FALSE_POSITIVE_COUNT and 
-                not self.fixing_false_positives and 
-                chosen_ball_location != (-1, -1)
-            ):
-
-                false_pos_x, false_pos_y = chosen_ball_location
-                self.false_positives.update(
-                    [(false_pos_x, false_pos_y),
-                    (false_pos_x + 0.5, false_pos_y),
-                    (false_pos_x, false_pos_y + 0.5),
-                    (false_pos_x + 0.5, false_pos_y + 0.5),
-                    (false_pos_x - 0.5, false_pos_y),
-                    (false_pos_x, false_pos_y - 0.5),
-                    (false_pos_x - 0.5, false_pos_y - 0.5)]
-                )
-
-
-                self.fix_false_positives()
-            
-            # update self.tracker
-            self.tracker[int(frame_id)] = {
-                'ball locations': ball_locations,                       # all predictions found
-                'homography location': homography_location,             # homographic location of ball
-                'vision model location': chosen_ball_location,          # vision model location of ball
-                'estimation': self.is_estimation,                       # whether the chosen location is an estimation
-                'ties': ties,                                           # if multiple detections are the same amount of pixels away we set ties and check future predictions to see which are most plausible
-                'ball lost': False,
-                'repeat_frame': False
-            }  
-
-            # we made it so if the starting frames don't detect a ball we mark it as (-1, -1) and now we want to fix it
-            if self.no_location_found == True: self.fix_no_detections(last_frame=frame_id)
-            if not self.tracker[frame_id]['estimation']: self.interpolate_estimations(frame_id=frame_id)
-
-            return self.is_estimation
-
-=======
     def update(
         self, 
         frame_id: int, 
@@ -719,4 +526,3 @@ class BallTracker:
         if not self.tracker[frame_id]['estimation']: self.interpolate_estimations(frame_id=frame_id)
  
         return self.is_estimation
->>>>>>> ca4022552e9814a1150864c076423b9c8b17c841

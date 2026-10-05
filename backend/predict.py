@@ -291,7 +291,8 @@ def predict(
         VIDEO_FILENAME = VIDEO_FILENAME,
         OUTPUT_PATH = OUTPUT_DIR,
         MODEL = XGBoost_model,
-        BALL_TRACKER_PREDICTIONS = ball_tracker.tracker
+        BALL_TRACKER_PREDICTIONS = ball_tracker.tracker,
+        PREDICTIONS_BY_FRAME = predictions_by_frame
     )
 
     update_status(

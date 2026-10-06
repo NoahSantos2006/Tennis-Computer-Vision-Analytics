@@ -347,7 +347,7 @@ def predict(
 
     end = time.time()
 
-    print(f"For a {total_frames / fps} second video it took {end - start:.2f}seconds")
+    print(f"For a {total_frames / fps} second video using {MAX_WORKERS} max workers it took {end - start:.2f}seconds")
 
     return bounce_detection_dict, fps
 

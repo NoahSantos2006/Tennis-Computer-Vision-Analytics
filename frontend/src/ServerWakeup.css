@@ -1,0 +1,161 @@
+/* ========================================
+   SERVER WAKEUP PAGE
+======================================== */
+
+.server-wakeup-page {
+    min-height: 100vh;
+    min-height: 100dvh;
+
+    display: grid;
+    place-items: center;
+
+    padding: 24px;
+
+    background: #f5f2e8;
+    color: #26351f;
+    font-family: Arial, sans-serif;
+}
+
+.server-wakeup-page * {
+    box-sizing: border-box;
+}
+
+
+/* ========================================
+   CARD
+======================================== */
+
+.server-wakeup-card {
+    width: 100%;
+    max-width: 480px;
+
+    padding: 40px 36px;
+
+    border: 1px solid #b5b99c;
+}
+
+
+/* ========================================
+   STATUS DOT
+======================================== */
+
+.server-wakeup-dot {
+    width: 8px;
+    height: 8px;
+
+    margin-bottom: 20px;
+
+    border-radius: 50%;
+
+    background: #a65f3f;
+
+    animation: server-wakeup-pulse 1.2s ease-in-out infinite;
+}
+
+.server-wakeup-dot.failed {
+    animation: none;
+}
+
+
+/* ========================================
+   TEXT
+======================================== */
+
+.server-wakeup-title {
+    margin: 0 0 10px;
+
+    font-size: 24px;
+    font-weight: 500;
+
+    color: #3f5a2d;
+}
+
+.server-wakeup-detail {
+    margin: 0 0 32px;
+
+    font-size: 14px;
+    line-height: 1.55;
+
+    color: #66704e;
+}
+
+
+/* ========================================
+   PROGRESS
+======================================== */
+
+.server-wakeup-progress-track {
+    width: 100%;
+    height: 6px;
+
+    background: #d5dec2;
+
+    overflow: hidden;
+}
+
+.server-wakeup-progress-bar {
+    height: 100%;
+
+    background: #3f5a2d;
+
+    transition: width 0.4s linear;
+}
+
+.server-wakeup-meta {
+    margin: 10px 0 0;
+
+    font-size: 9px;
+    letter-spacing: 1.5px;
+    text-transform: uppercase;
+    font-variant-numeric: tabular-nums;
+
+    color: #66704e;
+}
+
+
+/* ========================================
+   TRY AGAIN BUTTON
+======================================== */
+
+.server-wakeup-button {
+    padding: 10px 18px;
+
+    background: transparent;
+
+    border: 1px solid #9da780;
+
+    color: #40552e;
+    font: inherit;
+
+    cursor: pointer;
+}
+
+.server-wakeup-button:hover {
+    background: #435b31;
+    color: #ffffff;
+}
+
+.server-wakeup-button:focus-visible {
+    outline: 2px solid #3f5a2d;
+    outline-offset: 3px;
+}
+
+
+/* ========================================
+   ANIMATION
+======================================== */
+
+@keyframes server-wakeup-pulse {
+    0%, 100% { opacity: 0.3; }
+    50%      { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .server-wakeup-dot {
+        animation: none;
+    }
+
+    .server-wakeup-progress-bar {
+        transition: none;
+    }
+}

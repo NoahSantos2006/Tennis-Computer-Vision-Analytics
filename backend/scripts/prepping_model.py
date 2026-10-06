@@ -39,15 +39,60 @@ def acquire_training_dataframes(
 
         df = get_dataframe(
             ball_tracker=ball_tracker,
-            VIDEO_FILENAME=VIDEO_FILENAME,
             PREDICTIONS_FILE=PREDICTIONS_FILE
         )
 
         return df
 
+def get_windows(
+    frame_id: int,
+    ball_tracker: dict,
+    predictions_dict: dict,
+    bounce_window: int,
+    real_frames: list,
+    FEATURES: list = [
+        "SPEED", "VX", "VY", "ANGLE", "HOMOGRAPHY X", "HOMOGRAPHY Y",
+        "DISTANCE FROM NEAREST PLAYER", "ESTIMATION"
+    ]
+) -> dict:
+
+    res = {}
+
+    i = real_frames.index(frame_id)
+
+    for offset in range(-bounce_window, bounce_window + 1):
+
+        title = f"(frame - {-offset})" if offset <= 0 else f"(frame + {offset})"
+        j = offset + i
+        f = real_frames[j] if 0 <= j < len(real_frames) and real_frames[j] >= 2 else None
+        
+        if f is None:
+            res.update({f"{k}{title}": np.nan for k in FEATURES})
+        else:
+
+            s = ball_tracker[f]
+
+            vx, vy = s["velocity"] if isinstance(s.get("velocity"), list) else (np.nan, np.nan)
+
+            hx, hy = s["homography location"] if isinstance(s.get("homography location"), list) else (np.nan, np.nan)
+
+            dists = [np.hypot(p["homography location"][0] - hx, p["homography location"][1] - hy)
+                    for p in predictions_dict.get(f, []) if p["class"] != "ball" and p.get("box")]
+            est = s.get("estimation")
+
+            res.update({
+                f"SPEED{title}": s.get("speed", np.nan),
+                f"VX{title}": vx, f"VY{title}": vy,
+                f"ANGLE{title}": s.get("angle", np.nan),
+                f"HOMOGRAPHY X{title}": hx, f"HOMOGRAPHY Y{title}": hy,
+                f"DISTANCE FROM NEAREST PLAYER{title}": min(dists) if dists else np.nan,
+                f"ESTIMATION{title}": np.nan if est is None else int(est),
+            })
+
+    return res
+    
 def get_dataframe(
     ball_tracker: dict,
-    VIDEO_FILENAME: str,
     PREDICTIONS_FILE: Path,
     bounce_window: int = 5,
 ):
@@ -67,54 +112,7 @@ def get_dataframe(
 
         predictions_dict = json.load(file)
         predictions_dict = {int(k): v for k, v in predictions_dict.items()}
-
-    def get_windows(
-        frame_id: int,
-        ball_tracker: dict,
-        predictions_dict: dict,
-        bounce_window: int,
-        real_frames: list,
-        FEATURES: list = [
-            "SPEED", "VX", "VY", "ANGLE", "HOMOGRAPHY X", "HOMOGRAPHY Y",
-            "DISTANCE FROM NEAREST PLAYER", "ESTIMATION"
-        ]
-    ) -> dict:
-
-        res = {}
-
-        i = real_frames.index(frame_id)
-
-        for offset in range(-bounce_window, bounce_window + 1):
-
-            title = f"(frame - {-offset})" if offset <= 0 else f"(frame + {offset})"
-            j = offset + i
-            f = real_frames[j] if 0 <= j < len(real_frames) and real_frames[j] >= 2 else None
-            
-            if f is None:
-                res.update({f"{k}{title}": np.nan for k in FEATURES})
-            else:
-
-                s = ball_tracker[f]
-
-                vx, vy = s["velocity"] if isinstance(s.get("velocity"), list) else (np.nan, np.nan)
-
-                hx, hy = s["homography location"] if isinstance(s.get("homography location"), list) else (np.nan, np.nan)
-
-                dists = [np.hypot(p["homography location"][0] - hx, p["homography location"][1] - hy)
-                        for p in predictions_dict.get(f, []) if p["class"] != "ball" and p.get("box")]
-                est = s.get("estimation")
-
-                res.update({
-                    f"SPEED{title}": s.get("speed", np.nan),
-                    f"VX{title}": vx, f"VY{title}": vy,
-                    f"ANGLE{title}": s.get("angle", np.nan),
-                    f"HOMOGRAPHY X{title}": hx, f"HOMOGRAPHY Y{title}": hy,
-                    f"DISTANCE FROM NEAREST PLAYER{title}": min(dists) if dists else np.nan,
-                    f"ESTIMATION{title}": np.nan if est is None else int(est),
-                })
-
-        return res
-           
+       
     frame_id = 1
 
     rows = []

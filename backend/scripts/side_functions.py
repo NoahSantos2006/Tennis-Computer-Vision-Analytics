@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from backend.scripts.ball_tracker import BallTracker
 from backend.scripts.prepping_model import acquire_training_dataframes, pick_events
+from backend.scripts.status import update_status
 
 BASE_DIR = Path(__file__).parent.parent
 
@@ -122,11 +123,40 @@ def ball_near_player(
 
     return False, (-1, -1)
 
+def hitting_player_location(frame_id: int, predictions_by_frame: dict, ball_center: tuple) -> tuple:
+
+    # Repeat frames carry no detections, so use the last real frame
+    while predictions_by_frame.get(frame_id) == "Repeat Frame" and frame_id > 1:
+        frame_id -= 1
+
+    preds = predictions_by_frame.get(frame_id)
+    if not preds or preds == "Repeat Frame" or ball_center is None: return None
+
+    ball_x, ball_y = ball_center
+    closest_location, closest_distance = None, None
+
+    for pred in preds:
+        
+        if pred['class'] == "ball" or not pred.get('box') or pred.get('homography location') is None: continue
+
+        # Distance in image pixels from the ball to the player's box (0 if inside it)
+        x1, y1, x2, y2 = pred['box']
+        dx = max(x1 - ball_x, 0, ball_x - x2)
+        dy = max(y1 - ball_y, 0, ball_y - y2)
+        distance = np.hypot(dx, dy)
+
+        if closest_distance is None or distance < closest_distance:
+            closest_location, closest_distance = pred['homography location'], distance
+
+    return closest_location
+
 def get_bounces(
     VIDEO_FILENAME: str,
     OUTPUT_PATH: Path,
     MODEL: XGBClassifier,
+    PREDICTIONS_BY_FRAME: dict,
     BALL_TRACKER_PREDICTIONS: dict,
+    STATUS_PATH: Path,
     XGB_BOUNCE_THRESHOLD: float = float(os.getenv("XGB_BOUNCE_THRESHOLD")),
     XGB_HIT_THRESHOLD: float = float(os.getenv("XGB_HIT_THRESHOLD"))
 ) -> tuple:
@@ -135,6 +165,8 @@ def get_bounces(
         VIDEO_FILENAME=VIDEO_FILENAME,
         OUTPUT_PATH=OUTPUT_PATH
     )
+
+    total_frames = len(BALL_TRACKER_PREDICTIONS)
 
     X = df.drop(columns=["FRAME"])
 
@@ -149,12 +181,37 @@ def get_bounces(
 
     frame_id = 1
     results = {}
-    while frame_id < len(df):
+
+    while frame_id < total_frames:
 
         location = BALL_TRACKER_PREDICTIONS[frame_id].get("homography location", None)
+        ball_center = BALL_TRACKER_PREDICTIONS[frame_id].get("vision model location", None)
 
-        if frame_id in bounces: label = 1
-        elif frame_id in hits: label = 2
+        if ball_center is None: 
+            frame_id += 1
+
+            update_status(
+                status_file=STATUS_PATH,
+                status="in progress",
+                stage="Detecting Bounces and Hits",
+                current_frame=frame_id,
+                total_frames=total_frames
+            )
+
+            continue
+
+        if frame_id in bounces: 
+            label = 1
+        elif frame_id in hits: 
+            label = 2
+            player_location = hitting_player_location(
+                frame_id=frame_id,
+                predictions_by_frame=PREDICTIONS_BY_FRAME,
+                ball_center=ball_center
+            )
+
+            if player_location is not None: location = player_location
+
         else:
             frame_id += 1
             continue
@@ -165,6 +222,14 @@ def get_bounces(
         }
 
         frame_id += 1
+
+        update_status(
+            status_file=STATUS_PATH,
+            status="in progress",
+            stage="Detecting Bounces and Hits",
+            current_frame=frame_id,
+            total_frames=total_frames
+        )
 
     return results
 
@@ -268,6 +333,7 @@ def run_predictions(
     with open(PREDICTIONS_INPUT_FILE, "r") as f:
 
         predictions_by_frame = json.load(f)
+        predictions_by_frame = {int(k): v for k, v in predictions_by_frame.items()}
         total_frames = len(predictions_by_frame)
 
     with open(COURT_POINTS_INPUT_FILE, "r") as f:
@@ -278,7 +344,7 @@ def run_predictions(
 
     for frame_id in range(1, total_frames + 1):
 
-        predictions_array = predictions_by_frame.get(str(frame_id))
+        predictions_array = predictions_by_frame.get(frame_id)
 
         if predictions_array == "Repeat Frame":
 

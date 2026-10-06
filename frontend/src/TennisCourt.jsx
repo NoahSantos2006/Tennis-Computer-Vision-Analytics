@@ -2,6 +2,7 @@ import React from "react";
 
 import tennis_ball from "./images/tennis_ball.svg"
 import tennis_racket from "./images/tennis_racket.svg"
+import "./TennisCourt.css"
 
 function TennisCourt({ 
   bounces_dict = {},
@@ -14,6 +15,9 @@ function TennisCourt({
   const COURT_WIDTH = 18;               // original 10.97
   const DOUBLES_ALLEY = 2.25;              // original 1.37
   const SERVICE_LINE_FROM_NET = 6.4;
+  const MIN_MARGIN = 3;                   // minimum space around the court
+  const BALL_SIZE = 0.5;
+  const RACKET_SIZE = 1.3;
 
   function homographyToSvg(x, y) {
     const HOMOGRAPHY_PADDING = 30;
@@ -32,7 +36,9 @@ function TennisCourt({
   }
 
   let scaled_bounces = Object.fromEntries(
-    Object.entries(bounces_dict).map(([frame_id, values]) => {
+    Object.entries(bounces_dict)
+      .filter(([, values]) => values["homography location"])
+      .map(([frame_id, values]) => {
 
     let location = values["homography location"]
     const scaled_location = homographyToSvg(location[0], location[1])
@@ -48,6 +54,37 @@ function TennisCourt({
     })
   )
 
+  // Grow each side's margin so every marker (even hits far behind the baseline) stays in view.
+  // Uses all events, not just the ones shown so far, so the live court doesn't resize during playback.
+  let marginTop = MIN_MARGIN
+  let marginBottom = MIN_MARGIN
+  let marginLeft = MIN_MARGIN
+  let marginRight = MIN_MARGIN
+
+  Object.values(scaled_bounces).forEach(({ x, y, label }) => {
+    const reach = (label === 2 ? RACKET_SIZE : BALL_SIZE) / 2 + 0.5
+
+    marginTop = Math.max(marginTop, reach - y)
+    marginBottom = Math.max(marginBottom, y + reach - COURT_LENGTH)
+    marginLeft = Math.max(marginLeft, reach - x)
+    marginRight = Math.max(marginRight, x + reach - COURT_WIDTH)
+  })
+
+  // Keep the court centered
+  const marginY = Math.max(marginTop, marginBottom)
+  const marginX = Math.max(marginLeft, marginRight)
+
+  // In playback, the most recent shot that has happened so far gets highlighted
+  let latestFrame = null
+  if (playbackMode) {
+    Object.keys(scaled_bounces).forEach((frame_id) => {
+      const frameNumber = Number(frame_id)
+      if (frameNumber <= currentFrame && (latestFrame === null || frameNumber > latestFrame)) {
+        latestFrame = frameNumber
+      }
+    })
+  }
+
   const HALF_LENGTH = COURT_LENGTH / 2;
   const HALF_WIDTH = COURT_WIDTH / 2;
 
@@ -58,11 +95,22 @@ function TennisCourt({
   const COURT_COLOR = "#D8DFC5";
   const COURT_LINE = "#A8B58C";
   const NET_COLOR = "#4A5E35";
+  const RUNOFF_COLOR = "#E8ECDC";
 
   return (
     <svg
-      viewBox={`-0.5 -0.5 ${COURT_WIDTH + 1} ${COURT_LENGTH + 1}`}
+      viewBox={`${-marginX} ${-marginY} ${COURT_WIDTH + 2 * marginX} ${COURT_LENGTH + 2 * marginY}`}
+      overflow="visible"
     >
+
+      {/* Run-off area */}
+      <rect
+        x={-marginX}
+        y={-marginY}
+        width={COURT_WIDTH + 2 * marginX}
+        height={COURT_LENGTH + 2 * marginY}
+        fill={RUNOFF_COLOR}
+      />
 
       {/* Court */}
       <rect
@@ -157,24 +205,49 @@ function TennisCourt({
 
         if (values['label'] === 1) {
           current_href = tennis_ball
-          size = 0.5
+          size = BALL_SIZE
         } else if (values['label'] === 2) {
           current_href = tennis_racket
-          size = 1.3
+          size = RACKET_SIZE
         }
         
         
+        const isLatest = playbackMode && frameNumber === latestFrame
+
+        let markerClass = "shot-marker"
+        if (isLatest) {
+          markerClass += " shot-marker-latest"
+        } else if (playbackMode) {
+          markerClass += " shot-marker-past"
+        }
+
         if (filter == 0 || filter == values['label']) {
          return (
-          <image
-            href={current_href}
-            key={`shot-marker-frame-${frame_id}`}
-            x={values["x"]}
-            y={values["y"]}
-            width={size}
-            height={size}
-            color="#5F7F68"
-          />
+          <g key={`shot-marker-frame-${frame_id}`}>
+            {/* Ripple ring on the newest shot (keyed by frame so it replays for each new shot) */}
+            {isLatest && (
+              <circle
+                key={`shot-ripple-${frame_id}`}
+                className="shot-ripple"
+                cx={values["x"]}
+                cy={values["y"]}
+                r={size}
+                fill="none"
+                stroke={NET_COLOR}
+                strokeWidth=".1"
+              />
+            )}
+
+            <image
+              className={markerClass}
+              href={current_href}
+              x={values["x"] - size / 2}
+              y={values["y"] - size / 2}
+              width={size}
+              height={size}
+              color="#5F7F68"
+            />
+          </g>
          )
         }
       })}

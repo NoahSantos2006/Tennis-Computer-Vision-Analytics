@@ -61,6 +61,16 @@ def predict(
 
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
 
+    start = time.time()
+
+    update_status(
+        status_file=STATUS_PATH,
+        status="in progress",
+        stage="Processing Frames",
+        current_frame=0,
+        total_frames=total_frames
+    )
+
     client = InferenceHTTPClient.init(
         api_url="https://serverless.roboflow.com",
         api_key=api_key
@@ -235,6 +245,10 @@ def predict(
                     failed_frames.append(result_frame_id)
                     preds = []
 
+                for pred in preds:
+                    x, y, w, h = pred["x"], pred["y"], pred["width"], pred["height"]
+                    pred["box"] = [int(x - w / 2), int(y - h / 2), int(x + w / 2), int(y + h / 2)]
+
                 predictions_by_frame[result_frame_id] = preds
 
                 completed_frames += 1
@@ -256,6 +270,7 @@ def predict(
     PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"
     if not os.path.isdir(PREDICTIONS_DIRECTORY):
         os.makedirs(PREDICTIONS_DIRECTORY, exist_ok=True)
+        
     predictions_text_path = f"{OUTPUT_DIR}/predictions/{VIDEO_FILENAME}_predictions.txt"
     with open(predictions_text_path, "w") as f:
 
@@ -293,11 +308,21 @@ def predict(
     XGBoost_model = xgb.XGBClassifier()
     XGBoost_model.load_model(MODEL_PATH)
 
+    update_status(
+        status_file=STATUS_PATH,
+        status="in progress",
+        stage="Detecting Bounces and Hits",
+        current_frame=0,
+        total_frames=total_frames
+    )
+
     bounce_detection_dict = get_bounces(
         VIDEO_FILENAME = VIDEO_FILENAME,
         OUTPUT_PATH = OUTPUT_DIR,
         MODEL = XGBoost_model,
-        BALL_TRACKER_PREDICTIONS = ball_tracker.tracker
+        BALL_TRACKER_PREDICTIONS = ball_tracker.tracker,
+        PREDICTIONS_BY_FRAME = predictions_by_frame,
+        STATUS_PATH=STATUS_PATH
     )
 
     update_status(
@@ -307,6 +332,10 @@ def predict(
         current_frame=total_frames,
         total_frames=total_frames
     )
+
+    end = time.time()
+
+    print(f"For a {total_frames / fps} second video it took {end - start:.2f}seconds")
 
     return bounce_detection_dict, fps
 
@@ -354,4 +383,4 @@ def analyze_video(
     results_path = OUTPUT_PATH.parent / "results.json"
 
     with open(results_path, "w") as f:
-        json.dump(results, f)
+        json.dump(results, f, indent=4)

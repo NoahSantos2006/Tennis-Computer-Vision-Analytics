@@ -187,7 +187,7 @@ def predict(
 
         return frame_id, result
 
-    MAX_PENDING = MAX_WORKERS * 3
+    MAX_PENDING = MAX_WORKERS * 2
 
     # bounded concurrency
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
@@ -220,7 +220,7 @@ def predict(
                 future = executor.submit(
                     predict_frame,
                     frame_id=frame_id,
-                    frame=frame.copy(),
+                    frame=frame,
                 )
 
                 pending.add(future)
@@ -238,8 +238,12 @@ def predict(
 
             for future in done:
 
-                result_frame_id, preds = future.result()
-
+                try:
+                    result_frame_id, preds = future.result()
+                except Exception as e:
+                    print(f"frame failed: {e}")
+                    continue
+                
                 if preds is None:
 
                     failed_frames.append(result_frame_id)
@@ -261,9 +265,11 @@ def predict(
                     total_frames=total_frames
                 )
 
-            for frame in repeat_frames:
+    for frame in repeat_frames:
 
-                predictions_by_frame[frame] = "Repeat Frame"
+        predictions_by_frame[frame] = "Repeat Frame"
+
+    cap.release()
 
     update_status(
         status_file=STATUS_PATH,
@@ -272,8 +278,6 @@ def predict(
         current_frame=total_frames,
         total_frames=total_frames
     )
-
-    cap.release()
 
     PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"
     if not os.path.isdir(PREDICTIONS_DIRECTORY):

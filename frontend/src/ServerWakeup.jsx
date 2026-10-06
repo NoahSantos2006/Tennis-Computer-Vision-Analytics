@@ -1,5 +1,6 @@
 import React from "react";
 import { useEffect, useRef, useState, useCallback } from "react";
+import "./ServerWakeup.css";
 
 /**
  * Gates your app behind a "waking up server" screen for Render's free tier.
@@ -21,7 +22,7 @@ export default function ServerWakeup({
   healthPath = "/health",
   pollInterval = 3000,
   requestTimeout = 8000, // per attempt, so a hung cold-start request doesn't block polling
-  giveUpAfter = 120000,
+  giveUpAfter = 300000,
 }) {
   const [status, setStatus] = useState(STATUS.WAKING);
   const [elapsed, setElapsed] = useState(0);
@@ -99,132 +100,36 @@ export default function ServerWakeup({
   }
 
   return (
-    <>
-      <style>{css}</style>
-      <main className="wake" role="status" aria-live="polite">
-        <div className="wake__card">
-          <div className={`wake__dot ${failed ? "is-failed" : ""}`} aria-hidden="true" />
-          <h1 className="wake__title">{message}</h1>
-          <p className="wake__detail">{detail}</p>
+    <main className="server-wakeup-page" role="status" aria-live="polite">
+      <div className="server-wakeup-card">
+        <div className={`server-wakeup-dot ${failed ? "failed" : ""}`} aria-hidden="true" />
+        <h1 className="server-wakeup-title">{message}</h1>
+        <p className="server-wakeup-detail">{detail}</p>
 
-          {!failed && (
-            <>
-              <div
-                className="wake__bar"
-                role="progressbar"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(pct)}
-                aria-label="Server startup progress"
-              >
-                <div className="wake__fill" style={{ width: `${pct}%` }} />
-              </div>
-              <p className="wake__meta">
-                {elapsed}s elapsed, {attempts} {attempts === 1 ? "check" : "checks"} sent
-              </p>
-            </>
-          )}
+        {!failed && (
+          <>
+            <div
+              className="server-wakeup-progress-track"
+              role="progressbar"
+              aria-valuemin={0}
+              aria-valuemax={100}
+              aria-valuenow={Math.round(pct)}
+              aria-label="Server startup progress"
+            >
+              <div className="server-wakeup-progress-bar" style={{ width: `${pct}%` }} />
+            </div>
+            <p className="server-wakeup-meta">
+              {elapsed}s elapsed, {attempts} {attempts === 1 ? "check" : "checks"} sent
+            </p>
+          </>
+        )}
 
-          {failed && (
-            <button className="wake__btn" onClick={start}>
-              Try again
-            </button>
-          )}
-        </div>
-      </main>
-    </>
+        {failed && (
+          <button className="server-wakeup-button" onClick={start}>
+            Try again
+          </button>
+        )}
+      </div>
+    </main>
   );
 }
-
-const css = `
-.wake {
-  --bg: #14161a;
-  --card: #1c1f25;
-  --line: #2b2f37;
-  --text: #e8eaed;
-  --muted: #9aa1ac;
-  --accent: #7fd1b9;
-  --fail: #ef8a7a;
-  min-height: 100vh;
-  min-height: 100dvh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-  background: var(--bg);
-  color: var(--text);
-  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-}
-.wake__card {
-  width: 100%;
-  max-width: 420px;
-  padding: 32px 28px;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 14px;
-}
-.wake__dot {
-  width: 12px;
-  height: 12px;
-  margin-bottom: 20px;
-  border-radius: 50%;
-  background: var(--accent);
-  animation: wake-pulse 1.6s ease-in-out infinite;
-}
-.wake__dot.is-failed {
-  background: var(--fail);
-  animation: none;
-}
-.wake__title {
-  margin: 0 0 8px;
-  font-size: 1.35rem;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
-.wake__detail {
-  margin: 0 0 24px;
-  max-width: 60ch;
-  font-size: 0.95rem;
-  line-height: 1.55;
-  color: var(--muted);
-}
-.wake__bar {
-  height: 4px;
-  overflow: hidden;
-  border-radius: 2px;
-  background: var(--line);
-}
-.wake__fill {
-  height: 100%;
-  background: var(--accent);
-  transition: width 0.4s linear;
-}
-.wake__meta {
-  margin: 12px 0 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-}
-.wake__btn {
-  padding: 10px 18px;
-  font: inherit;
-  font-weight: 600;
-  color: var(--bg);
-  background: var(--text);
-  border: 0;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.wake__btn:hover { background: #fff; }
-.wake__btn:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 3px;
-}
-@keyframes wake-pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50% { opacity: 0.35; transform: scale(0.8); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .wake__dot { animation: none; }
-  .wake__fill { transition: none; }
-}
-`;

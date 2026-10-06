@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import ReactDOM from "react-dom/client";
+import { Analytics } from "@vercel/analytics/react"
 
 import ServerWakeup from "./ServerWakeup.jsx"
 import VideoUpload from "./VideoUpload.jsx";
@@ -14,15 +15,18 @@ import {
 
 function App() {
   return (
-    <ServerWakeup apiUrl={import.meta.env.VITE_API_URL}>
-      <BrowserRouter>
-        <Header />
-        <Routes>
-          <Route path="/" element={<VideoUpload />} />
-          <Route path="/results" element={<ShotChart />} />
-        </Routes>
-      </BrowserRouter>
-    </ServerWakeup>
+    <>
+      <ServerWakeup apiUrl={import.meta.env.VITE_API_URL}>
+        <BrowserRouter>
+          <Header />
+          <Routes>
+            <Route path="/" element={<VideoUpload />} />
+            <Route path="/results" element={<ShotChart />} />
+          </Routes>
+        </BrowserRouter>
+      </ServerWakeup>
+    <Analytics />
+    </>
   );
 }
 

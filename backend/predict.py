@@ -43,7 +43,6 @@ def predict(
         STATUS_PATH: Path,
         api_key: str,
         MAX_WORKERS: int = MAX_WORKERS,
-        MEAN_DIFF_THRESHOLD: float = 0.1
     ) -> dict:
     
     parts = video_path.parts
@@ -75,6 +74,16 @@ def predict(
         frame: np.array, 
     ) -> tuple:
 
+        data = None
+
+        h, w = frame.shape[:2]
+        scale = 1.0
+        if w > 1280:
+            scale = 1280 / w
+            frame_small = cv2.resize(frame, (1280, int(h * scale)), interpolation=cv2.INTER_AREA)
+        else:
+            frame_small = frame
+
         if frame_id == 1 or frame_id % 50 == 0:
             
             for attempt in range(MAX_ATTEMPTS):
@@ -84,7 +93,7 @@ def predict(
                     data = client.run_workflow(
                         workflow_id=WORKFLOW_ID_WITH_COURT_POINTS,
                         workspace_name=WORKSPACE_NAME,
-                        images={"image": frame},
+                        images={"image": frame_small},
                     )[0]
                     break
 
@@ -117,7 +126,7 @@ def predict(
                     data = client.run_workflow(
                         workflow_id=WORKFLOW_ID,
                         workspace_name=WORKSPACE_NAME,
-                        images={"image": frame},
+                        images={"image": frame_small},
                     )[0]
                     break
 
@@ -146,6 +155,12 @@ def predict(
             return frame_id, None
 
         result = data.get("predictions", {}).get("predictions", [])
+        for pred in result:
+
+            pred["x"] /= scale
+            pred["y"] /= scale
+            pred["width"] /= scale
+            pred["height"] /= scale  
 
         court_detection_data = data.get("court_detection_predictions", {})
         if court_detection_data:
@@ -153,7 +168,12 @@ def predict(
             if court_detection_data.get("predictions", []):
 
                 court_detection_points = court_detection_data.get('predictions', [])[0].get("keypoints", [])
-                court_detection_points_by_frame[frame_id] = court_detection_points      
+                for court_point in court_detection_points:
+
+                    court_point["x"] /= scale
+                    court_point["y"] /= scale
+
+                court_detection_points_by_frame[frame_id] = court_detection_points    
 
         return frame_id, result
 
@@ -305,7 +325,9 @@ def analyze_video(
     VIDEO_PATH = Path(os.path.join(INPUT_PATH, f"{VIDEO_FILENAME}.mp4"))
     if not os.path.isfile(VIDEO_PATH):
         print(f"Could not find file: {VIDEO_PATH}")
-        os._exit(1)
+        results = {
+            "ok": False
+        }
 
     BALL_TRACKING_DIRECTORY = os.path.join(OUTPUT_PATH, "BallTracking", f"{VIDEO_FILENAME}")
 

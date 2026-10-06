@@ -2,6 +2,7 @@ import React from "react";
 
 import tennis_ball from "./images/tennis_ball.svg"
 import tennis_racket from "./images/tennis_racket.svg"
+import "./TennisCourt.css"
 
 function TennisCourt({ 
   bounces_dict = {},
@@ -72,6 +73,17 @@ function TennisCourt({
   // Keep the court centered
   const marginY = Math.max(marginTop, marginBottom)
   const marginX = Math.max(marginLeft, marginRight)
+
+  // In playback, the most recent shot that has happened so far gets highlighted
+  let latestFrame = null
+  if (playbackMode) {
+    Object.keys(scaled_bounces).forEach((frame_id) => {
+      const frameNumber = Number(frame_id)
+      if (frameNumber <= currentFrame && (latestFrame === null || frameNumber > latestFrame)) {
+        latestFrame = frameNumber
+      }
+    })
+  }
 
   const HALF_LENGTH = COURT_LENGTH / 2;
   const HALF_WIDTH = COURT_WIDTH / 2;
@@ -200,17 +212,42 @@ function TennisCourt({
         }
         
         
+        const isLatest = playbackMode && frameNumber === latestFrame
+
+        let markerClass = "shot-marker"
+        if (isLatest) {
+          markerClass += " shot-marker-latest"
+        } else if (playbackMode) {
+          markerClass += " shot-marker-past"
+        }
+
         if (filter == 0 || filter == values['label']) {
          return (
-          <image
-            href={current_href}
-            key={`shot-marker-frame-${frame_id}`}
-            x={values["x"] - size / 2}
-            y={values["y"] - size / 2}
-            width={size}
-            height={size}
-            color="#5F7F68"
-          />
+          <g key={`shot-marker-frame-${frame_id}`}>
+            {/* Ripple ring on the newest shot (keyed by frame so it replays for each new shot) */}
+            {isLatest && (
+              <circle
+                key={`shot-ripple-${frame_id}`}
+                className="shot-ripple"
+                cx={values["x"]}
+                cy={values["y"]}
+                r={size}
+                fill="none"
+                stroke={NET_COLOR}
+                strokeWidth=".1"
+              />
+            )}
+
+            <image
+              className={markerClass}
+              href={current_href}
+              x={values["x"] - size / 2}
+              y={values["y"] - size / 2}
+              width={size}
+              height={size}
+              color="#5F7F68"
+            />
+          </g>
          )
         }
       })}

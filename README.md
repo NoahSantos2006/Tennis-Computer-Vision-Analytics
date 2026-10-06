@@ -18,6 +18,16 @@
 
 ---
 
+## Demo
+
+<p align="center">
+  <img src="docs/demo.gif" alt="Rally playback: the broadcast video plays on the left while each bounce and hit appears on a live top-down court on the right" width="100%">
+</p>
+
+<p align="center"><i>Every bounce (ball) and hit (racket) lands on the live court as the rally plays.</i></p>
+
+---
+
 ## What it does
 
 Point it at broadcast tennis footage and it will:

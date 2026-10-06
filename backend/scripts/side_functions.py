@@ -14,6 +14,7 @@ from dotenv import load_dotenv
 
 from backend.scripts.ball_tracker import BallTracker
 from backend.scripts.prepping_model import acquire_training_dataframes, pick_events
+from backend.scripts.status import update_status
 
 BASE_DIR = Path(__file__).parent.parent
 
@@ -155,6 +156,7 @@ def get_bounces(
     MODEL: XGBClassifier,
     PREDICTIONS_BY_FRAME: dict,
     BALL_TRACKER_PREDICTIONS: dict,
+    STATUS_PATH: Path,
     XGB_BOUNCE_THRESHOLD: float = float(os.getenv("XGB_BOUNCE_THRESHOLD")),
     XGB_HIT_THRESHOLD: float = float(os.getenv("XGB_HIT_THRESHOLD"))
 ) -> tuple:
@@ -163,6 +165,8 @@ def get_bounces(
         VIDEO_FILENAME=VIDEO_FILENAME,
         OUTPUT_PATH=OUTPUT_PATH
     )
+
+    total_frames = len(BALL_TRACKER_PREDICTIONS)
 
     X = df.drop(columns=["FRAME"])
 
@@ -177,13 +181,23 @@ def get_bounces(
 
     frame_id = 1
     results = {}
-    while frame_id < len(BALL_TRACKER_PREDICTIONS):
+
+    while frame_id < total_frames:
 
         location = BALL_TRACKER_PREDICTIONS[frame_id].get("homography location", None)
         ball_center = BALL_TRACKER_PREDICTIONS[frame_id].get("vision model location", None)
 
         if ball_center is None: 
             frame_id += 1
+
+            update_status(
+                status_file=STATUS_PATH,
+                status="in progress",
+                stage="Detecting Bounces and Hits",
+                current_frame=frame_id,
+                total_frames=total_frames
+            )
+
             continue
 
         if frame_id in bounces: 
@@ -208,6 +222,14 @@ def get_bounces(
         }
 
         frame_id += 1
+
+        update_status(
+            status_file=STATUS_PATH,
+            status="in progress",
+            stage="Detecting Bounces and Hits",
+            current_frame=frame_id,
+            total_frames=total_frames
+        )
 
     return results
 

@@ -287,12 +287,21 @@ def predict(
     XGBoost_model = xgb.XGBClassifier()
     XGBoost_model.load_model(MODEL_PATH)
 
+    update_status(
+        status_file=STATUS_PATH,
+        status="in progress",
+        stage="Detecting Bounces and Hits",
+        current_frame=0,
+        total_frames=total_frames
+    )
+
     bounce_detection_dict = get_bounces(
         VIDEO_FILENAME = VIDEO_FILENAME,
         OUTPUT_PATH = OUTPUT_DIR,
         MODEL = XGBoost_model,
         BALL_TRACKER_PREDICTIONS = ball_tracker.tracker,
-        PREDICTIONS_BY_FRAME = predictions_by_frame
+        PREDICTIONS_BY_FRAME = predictions_by_frame,
+        STATUS_PATH=STATUS_PATH
     )
 
     update_status(

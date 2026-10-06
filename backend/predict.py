@@ -265,6 +265,14 @@ def predict(
 
                 predictions_by_frame[frame] = "Repeat Frame"
 
+    update_status(
+        status_file=STATUS_PATH,
+        status="in progress",
+        stage="Processing Frames",
+        current_frame=total_frames,
+        total_frames=total_frames
+    )
+
     cap.release()
 
     PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"

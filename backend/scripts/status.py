@@ -21,11 +21,9 @@ def update_status(
         "progress": progress,
     }
 
-    if current_frame % 10 == 0:
+    with status_lock:
 
-        with status_lock:
+        with open(status_file, "w") as f:
 
-            with open(status_file, "w") as f:
-
-                json.dump(status_dict, f, indent=4)
+            json.dump(status_dict, f, indent=4)
 

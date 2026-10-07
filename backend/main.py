@@ -16,6 +16,8 @@ from backend.scripts.sweep import sweeper_loop
 from contextlib import asynccontextmanager
 import asyncio
 
+import modal
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STORAGE_DIRECTORY = PROJECT_ROOT / "storage"
 
@@ -23,6 +25,8 @@ JOBS_DIR = STORAGE_DIRECTORY / "jobs"
 os.makedirs(JOBS_DIR, exist_ok=True)
 
 MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
+
+run_job = modal.Function.from_name("tennis-cv-analytics", "run_job")
 
 @asynccontextmanager
 async def lifespan(app):
@@ -43,20 +47,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-def create_job():
-
-    job_id = str(uuid4())
-
-    job_dir = JOBS_DIR / job_id
-    input_dir = job_dir / "input"
-    output_dir = job_dir / "output"
-
-    input_dir.mkdir(parents=True, exist_ok=True)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    return job_id, input_dir, output_dir
-
-
 @app.get("/health")
 def health():
 
@@ -64,7 +54,7 @@ def health():
 
 @app.get("/")
 def home():
-    return {'message': 'CourtVision is running'}
+    return {'message': 'Tennis Computer Vision Analytics is running'}
 
 @app.post("/analyze")
 async def analyze(
@@ -74,35 +64,18 @@ async def analyze(
 
     try:
 
-        job_id, input_dir, output_dir = create_job()
+        job_id = str(uuid4())
 
-        video_path = input_dir / video.filename
-        VIDEO_FILENAME = video.filename.split(".")[0]
-        
-        # copying the uploaded video's data into a real file
-        with open(video_path, "wb") as buffer:
-            shutil.copyfileobj(video.file, buffer)
-
-        background_tasks.add_task(
-            func=analyze_video,
-            VIDEO_FILENAME=VIDEO_FILENAME,
-            INPUT_PATH=input_dir,
-            OUTPUT_PATH=output_dir,
-            JOB_ID=job_id,
-            MODEL_PATH=MODEL_PATH
-        )
-
-        return {
-            "ok": True,
-            "video filename": video.filename,
-            'job id': job_id
-        }
+        call = await run_job.spawn.aio(job_id, video.filename, await video.read())   # returns right away
+        # save call.object_id somewhere (e.g. storage/jobs/{job_id}/call_id.txt)
+        return {"ok": True, "video filename": video.filename, "job id": job_id}
 
     except Exception as e:
 
-        return {
-            "ok": False
-        }
+        raise HTTPException(
+            status_code=404,
+            detail="Analyzation of video failed."
+        )
 
 @app.get("/video/{job_id}/{filename}")
 def get_video(job_id: str, filename: str):
@@ -139,15 +112,25 @@ def get_job_status(job_id: str):
 
     return status
 
+def save_call_id(job_id: str, call_id: str):
+
+    job_dir = JOBS_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    (job_dir / "call_id.txt").write_text(call_id)
+
+def read_call_id(job_id: str) -> str:
+    path = JOBS_DIR / job_id / "call_id.txt"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Job not found")
+    return path.read_text()
+
 @app.get("/jobs/{job_id}/results")
 def get_results(job_id: str):
 
-    results_path = JOBS_DIR / job_id / "results.json"
+    call = modal.FunctionCall.from_id(read_call_id(job_id))
 
-    with open(results_path, "r") as f:
-
-        results = json.load(f)
-        results['Bounce Detection Dictionary'] = {int(k): v for k, v in results['Bounce Detection Dictionary'].items()}
-
-    return results
+    try:
+        return call.get(timeout=0)
+    except TimeoutError:
+        raise HTTPException(status_code=202, detail="Still Running")
 

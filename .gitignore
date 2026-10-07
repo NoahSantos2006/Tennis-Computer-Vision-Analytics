@@ -3,6 +3,7 @@
 __pycache__/
 testing.py
 print_memory.py
+.vscode/
 
 # Node / React
 node_modules/

@@ -41,7 +41,7 @@ jobs:
       # check the container actually starts and answers /health.
       - name: Smoke test
         run: |
-          docker run -d --name api -p 8000:8000 \                         
+          docker run -d --name api -p 8000:8000 \
             -e ROBOFLOW_API_KEY=dummy -e WORKSPACE_NAME=x -e WORKFLOW_ID=x \
             -e WORKFLOW_ID_WITH_COURT_POINTS=x -e MAX_WORKERS=2 -e MAX_ATTEMPTS=2 \
             -e XGB_BOUNCE_THRESHOLD=0.7 -e XGB_HIT_THRESHOLD=0.5 \

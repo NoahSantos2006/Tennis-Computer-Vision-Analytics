@@ -43,6 +43,7 @@ def predict(
         MODEL_PATH: Path, 
         STATUS_PATH: Path,
         api_key: str,
+        JOB_ID: str,
         MAX_WORKERS: int = MAX_WORKERS,
     ) -> dict:
     
@@ -58,17 +59,17 @@ def predict(
         raise ValueError("Could not open video: %s", INPUT_VIDEO)
     
     fps = cap.get(cv2.CAP_PROP_FPS)
-
     total_frames = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+    video_duration = np.round(total_frames / fps, 2) # in seconds
 
     start = time.time()
 
     update_status(
-        status_file=STATUS_PATH,
         status="in progress",
         stage="Processing Frames",
         current_frame=0,
-        total_frames=total_frames
+        total_frames=total_frames,
+        job_id=JOB_ID
     )
 
     client = InferenceHTTPClient.init(
@@ -171,6 +172,7 @@ def predict(
     MAX_PENDING = MAX_WORKERS * 2
 
     # bounded concurrency
+    roboflow_inference_start = time.time()
     with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
 
         pending = set()
@@ -239,11 +241,11 @@ def predict(
                 completed_frames += 1
 
                 update_status(
-                    status_file=STATUS_PATH,
                     status="in progress",
                     stage="Processing Frames",
                     current_frame=completed_frames + len(repeat_frames),
-                    total_frames=total_frames
+                    total_frames=total_frames,
+                    job_id=JOB_ID
                 )
 
     for frame in repeat_frames:
@@ -252,12 +254,17 @@ def predict(
 
     cap.release()
 
+    roboflow_inference_end = time.time()
+    roboflow_inference_elapsed_time = np.round(roboflow_inference_end - roboflow_inference_start, 2)
+
+    logger.info("Roboflow inference for a %lf second video took %lf seconds. (%s)", video_duration, roboflow_inference_elapsed_time, VIDEO_FILENAME)
+
     update_status(
-        status_file=STATUS_PATH,
         status="in progress",
         stage="Processing Frames",
         current_frame=total_frames,
-        total_frames=total_frames
+        total_frames=total_frames,
+        job_id=JOB_ID
     )
 
     PREDICTIONS_DIRECTORY = OUTPUT_DIR / "predictions"
@@ -280,6 +287,7 @@ def predict(
     BALL_TRACKER_CLASS_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking_class.pkl")
     BALL_TRACKER_FILE = os.path.join(OUTPUT_DIR, "BallTracking", VIDEO_FILENAME, f"{VIDEO_FILENAME}_ball_tracking.json")
 
+    
     predictions_by_frame, ball_tracker = run_predictions(
         COURT_POINTS_INPUT_FILE=court_points_path, 
         PREDICTIONS_INPUT_FILE=predictions_text_path, 
@@ -301,12 +309,14 @@ def predict(
     XGBoost_model = xgb.XGBClassifier()
     XGBoost_model.load_model(MODEL_PATH)
 
+    xgboost_model_inference_start = time.time()
+
     update_status(
-        status_file=STATUS_PATH,
         status="in progress",
         stage="Detecting Bounces and Hits",
         current_frame=0,
-        total_frames=total_frames
+        total_frames=total_frames,
+        job_id=JOB_ID
     )
 
     bounce_detection_dict = get_bounces(
@@ -315,20 +325,22 @@ def predict(
         MODEL = XGBoost_model,
         BALL_TRACKER_PREDICTIONS = ball_tracker.tracker,
         PREDICTIONS_BY_FRAME = predictions_by_frame,
-        STATUS_PATH=STATUS_PATH
+        JOB_ID=JOB_ID
     )
 
+    xgboost_model_inference_end = time.time()
+    xgboost_model_inference_elapsed = np.round(xgboost_model_inference_end - xgboost_model_inference_start, 2)
+    logger.info("XGBoost inference for a %lf second video took %lf seconds (%s)", video_duration, xgboost_model_inference_elapsed, VIDEO_FILENAME)
+
     update_status(
-        status_file=STATUS_PATH,
         status="finished",
         stage="",
         current_frame=total_frames,
-        total_frames=total_frames
+        total_frames=total_frames,
+        job_id=JOB_ID
     )
 
     end = time.time()
-
-    video_duration = np.round(total_frames / fps, 2)
     elapsed = np.round(end - start, 2)
 
     logging.info("For a %lf second video using %d max workers it took %lf seconds (%s.mp4)", video_duration, MAX_WORKERS, elapsed, VIDEO_FILENAME)
@@ -362,18 +374,19 @@ def analyze_video(
             OUTPUT_DIR=OUTPUT_PATH,
             MODEL_PATH=MODEL_PATH,
             STATUS_PATH=STATUS_PATH,
-            api_key=ROBOFLOW_API_KEY, 
+            api_key=ROBOFLOW_API_KEY,
+            JOB_ID=JOB_ID
         )
 
     except Exception:
         
         logger.exception("job %s failed", JOB_ID)
         update_status(
-            status_file=STATUS_PATH, 
             status="failed",
             stage="Could not process video", 
             current_frame=0, 
-            total_frames=1
+            total_frames=1,
+            job_id=JOB_ID
         )
         raise
 

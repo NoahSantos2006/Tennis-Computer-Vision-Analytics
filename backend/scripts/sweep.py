@@ -1,6 +1,9 @@
 import asyncio, shutil, time
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 MAX_AGE = int(os.getenv("MAX_AGE"))
 CHECK_EVERY = int(os.getenv("CHECK_EVERY"))

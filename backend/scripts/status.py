@@ -1,29 +1,25 @@
-import os
-import json
-import threading
+import modal
+from pathlib import Path
 
-status_lock = threading.Lock()
+progress = modal.Dict.from_name("tennis-cv-analytics-progress", create_if_missing=True)
 
 def update_status(
-    status_file,
-    status,
-    stage,
-    current_frame,
-    total_frames,
-):
-    progress = (current_frame / total_frames) * 100
+    job_id: str,
+    status: str,
+    stage: str,
+    current_frame: int,
+    total_frames: int,
+) -> None:
+    
+    current_progress = (current_frame / total_frames) * 100 if total_frames else 0
 
     status_dict = {
         "status": status,
         "stage": stage,
         "current frame": current_frame,
         "total frames": total_frames,
-        "progress": progress,
+        "progress": current_progress,
     }
 
-    with status_lock:
-
-        with open(status_file, "w") as f:
-
-            json.dump(status_dict, f, indent=4)
+    progress[job_id] = status_dict
 

@@ -1,6 +1,7 @@
 import json
 from pathlib import Path
 import os
+import logging
 
 import modal
 
@@ -16,6 +17,7 @@ image = (
 # Progress shared between Modal and Render (see step 4)
 progress = modal.Dict.from_name("tennis-cv-analytics-progress", create_if_missing=True)
 
+logger = logging.getLogger(__name__)
 
 @app.function(
     image=image,
@@ -24,7 +26,6 @@ progress = modal.Dict.from_name("tennis-cv-analytics-progress", create_if_missin
     timeout=30 * 60,
     secrets=[modal.Secret.from_name("tennis-cv-analytics-env")],  # your .env values
 )
-
 def run_job(job_id: str, filename: str, video_bytes: bytes) -> dict:
     
     from backend.predict import analyze_video

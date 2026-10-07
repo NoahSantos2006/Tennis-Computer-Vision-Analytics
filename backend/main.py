@@ -3,14 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from pathlib import Path
-import shutil
-import json
 import os
+import logging
 
 from uuid import uuid4
-
-from backend.predict import analyze_video
-from backend.scripts.status import status_lock
 
 from backend.scripts.sweep import sweeper_loop
 from contextlib import asynccontextmanager
@@ -27,6 +23,9 @@ os.makedirs(JOBS_DIR, exist_ok=True)
 MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
 
 run_job = modal.Function.from_name("tennis-cv-analytics", "run_job")
+progress = modal.Dict.from_name("tennis-cv-analytics-progress")
+
+logger = logging.getLogger(__name__)
 
 def save_call_id(job_id: str, call_id: str):
 
@@ -70,17 +69,20 @@ def home():
 
 @app.post("/analyze")
 async def analyze(
-    background_tasks: BackgroundTasks,
     video: UploadFile = File(...)
 ): # File(...) Ellipsis: means this must be an uploaded file and it's required
 
     try:
 
         job_id = str(uuid4())
+        video_bytes = await video.read()
+
+        input_dir = JOBS_DIR / job_id / "input"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        (input_dir / video.filename).write_bytes(video_bytes) 
 
         # reads uploaded video, send it to Modal to start analyzing and keep ticket
-        call = await run_job.spawn.aio(job_id, video.filename, await video.read())   # returns right away
-
+        call = await run_job.spawn.aio(job_id, video.filename, video_bytes)   # returns right away
         # save call.object_id somewhere (e.g. storage/jobs/{job_id}/call_id.txt)
         save_call_id(job_id=job_id, call_id=call.object_id)
 
@@ -88,9 +90,11 @@ async def analyze(
 
     except Exception as e:
 
+        logger.exception("Failed to start job %s for %s", job_id, video.filename)
+
         raise HTTPException(
             status_code=404,
-            detail="Analyzation of video failed."
+            detail="Analysis of video failed."
         )
 
 @app.get("/video/{job_id}/{filename}")
@@ -112,20 +116,35 @@ def get_video(job_id: str, filename: str):
 @app.get("/jobs/{job_id}/status")
 def get_job_status(job_id: str):
 
-    status_file = JOBS_DIR / job_id / "output" / "status.json"
-    
-    if not status_file.is_file():
+    if not (JOBS_DIR / job_id / "call_id.txt").is_file():
 
         raise HTTPException(
             status_code=404,
-            detail="Job status not found"
+            detail="Job not found"
         )
 
-    with status_lock:
+    try:
 
-        with open(status_file, "r") as f:
-            status = json.load(f)
+        status = progress.get(job_id)
+    
+    except Exception as e:
 
+        logger.exception("Could not read status for job %s", job_id)
+
+        raise HTTPException(
+            status_code=500,
+            detail="Could not read job status"
+        )
+
+    if status is None:
+        return {
+            "status": "queued", 
+            "stage": "starting", 
+            "progress": 0,
+            "current frame": 0, 
+            "total frames": 1
+        }
+    
     return status
 
 @app.get("/jobs/{job_id}/results")

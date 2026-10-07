@@ -15,6 +15,8 @@ from fastapi.testclient import TestClient
 
 import backend.main as main
 import backend.predict as predict
+import backend.scripts.status as status
+
 from tests.conftest import VIDEO_KEYPOINTS
 
 WIDTH, HEIGHT, FRAMES = 640, 360, 30
@@ -132,6 +134,10 @@ class FakeRunJob:
 @pytest.fixture
 def client(jobs_dir, monkeypatch):
     FakeRoboflow.calls = []
+    fake_progress = {}                                          # one shared dict, like the real Dict
+    monkeypatch.setattr(status, "progress", fake_progress)      # where update_status writes
+    monkeypatch.setattr(main, "progress", fake_progress)        # where /status reads
+
     monkeypatch.setattr(predict, "InferenceHTTPClient", FakeRoboflow)
     # Never call the real Modal from tests: run the job locally instead.
     monkeypatch.setattr(main, "run_job", FakeRunJob(jobs_dir))

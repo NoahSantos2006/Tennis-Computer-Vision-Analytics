@@ -156,7 +156,7 @@ def get_bounces(
     MODEL: XGBClassifier,
     PREDICTIONS_BY_FRAME: dict,
     BALL_TRACKER_PREDICTIONS: dict,
-    STATUS_PATH: Path,
+    JOB_ID: str,
     XGB_BOUNCE_THRESHOLD: float = float(os.getenv("XGB_BOUNCE_THRESHOLD")),
     XGB_HIT_THRESHOLD: float = float(os.getenv("XGB_HIT_THRESHOLD"))
 ) -> tuple:
@@ -191,11 +191,11 @@ def get_bounces(
             frame_id += 1
 
             update_status(
-                status_file=STATUS_PATH,
                 status="in progress",
                 stage="Detecting Bounces and Hits",
                 current_frame=frame_id,
-                total_frames=total_frames
+                total_frames=total_frames,
+                job_id=JOB_ID
             )
 
             continue
@@ -224,11 +224,11 @@ def get_bounces(
         frame_id += 1
 
         update_status(
-            status_file=STATUS_PATH,
             status="in progress",
             stage="Detecting Bounces and Hits",
             current_frame=frame_id,
-            total_frames=total_frames
+            total_frames=total_frames,
+            job_id=JOB_ID
         )
 
     return results

@@ -28,6 +28,18 @@ MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
 
 run_job = modal.Function.from_name("tennis-cv-analytics", "run_job")
 
+def save_call_id(job_id: str, call_id: str):
+
+    job_dir = JOBS_DIR / job_id
+    job_dir.mkdir(parents=True, exist_ok=True)
+    (job_dir / "call_id.txt").write_text(call_id)
+
+def read_call_id(job_id: str) -> str:
+    path = JOBS_DIR / job_id / "call_id.txt"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Job not found")
+    return path.read_text()
+
 @asynccontextmanager
 async def lifespan(app):
     task = asyncio.create_task(sweeper_loop(JOBS_DIR=JOBS_DIR))
@@ -66,8 +78,12 @@ async def analyze(
 
         job_id = str(uuid4())
 
+        # reads uploaded video, send it to Modal to start analyzing and keep ticket
         call = await run_job.spawn.aio(job_id, video.filename, await video.read())   # returns right away
+
         # save call.object_id somewhere (e.g. storage/jobs/{job_id}/call_id.txt)
+        save_call_id(job_id=job_id, call_id=call.object_id)
+
         return {"ok": True, "video filename": video.filename, "job id": job_id}
 
     except Exception as e:
@@ -111,18 +127,6 @@ def get_job_status(job_id: str):
             status = json.load(f)
 
     return status
-
-def save_call_id(job_id: str, call_id: str):
-
-    job_dir = JOBS_DIR / job_id
-    job_dir.mkdir(parents=True, exist_ok=True)
-    (job_dir / "call_id.txt").write_text(call_id)
-
-def read_call_id(job_id: str) -> str:
-    path = JOBS_DIR / job_id / "call_id.txt"
-    if not path.is_file():
-        raise HTTPException(status_code=404, detail="Job not found")
-    return path.read_text()
 
 @app.get("/jobs/{job_id}/results")
 def get_results(job_id: str):

@@ -14,7 +14,7 @@ import os
 import time, random
 
 from inference_sdk import InferenceHTTPClient
-from inference_sdk.http.errors import HTTPCallErrorError, HTTPClientError
+from inference_sdk.http.errors import HTTPClientError
 
 from backend.scripts.side_functions import run_predictions, get_bounces
 from backend.scripts.ball_tracker import BallTracker
@@ -29,6 +29,8 @@ WORKSPACE_NAME = os.getenv("WORKSPACE_NAME")
 WORKFLOW_ID = os.getenv("WORKFLOW_ID")
 WORKFLOW_ID_WITH_COURT_POINTS = os.getenv("WORKFLOW_ID_WITH_COURT_POINTS")
 MAX_ATTEMPTS = int(os.getenv("MAX_ATTEMPTS"))
+
+logger = logging.getLogger(__name__)
 
 def is_repeat(frame, prev):
     a = cv2.cvtColor(cv2.resize(frame, (480, 270)), cv2.COLOR_BGR2GRAY)
@@ -53,8 +55,7 @@ def predict(
 
     cap = cv2.VideoCapture(INPUT_VIDEO)
     if not cap.isOpened():
-        print(f"Could not open video {INPUT_VIDEO}")
-        os._exit(1)
+        raise ValueError("Could not open video: %s", INPUT_VIDEO)
     
     fps = cap.get(cv2.CAP_PROP_FPS)
 
@@ -327,9 +328,10 @@ def predict(
 
     end = time.time()
 
-    logging.info
+    video_duration = np.round(total_frames / fps, 2)
+    elapsed = np.round(end - start, 2)
 
-    print(f"For a {total_frames / fps} second video using {MAX_WORKERS} max workers it took {end - start:.2f}seconds ({VIDEO_FILENAME}.mp4)")
+    logging.info("For a %lf second video using %d max workers it took %lf seconds (%s.mp4)", video_duration, MAX_WORKERS, elapsed, VIDEO_FILENAME)
 
     return bounce_detection_dict, fps
 
@@ -342,29 +344,38 @@ def analyze_video(
 ) -> tuple:
 
     ROBOFLOW_API_KEY = os.getenv("ROBOFLOW_API_KEY")
-
     STATUS_PATH = OUTPUT_PATH / "status.json"
-
-    VIDEO_PATH = Path(os.path.join(INPUT_PATH, f"{VIDEO_FILENAME}.mp4"))
-    if not os.path.isfile(VIDEO_PATH):
-        print(f"Could not find file: {VIDEO_PATH}")
-        results = {
-            "ok": False
-        }
-
     BALL_TRACKING_DIRECTORY = os.path.join(OUTPUT_PATH, "BallTracking", f"{VIDEO_FILENAME}")
 
-    if not os.path.isdir(BALL_TRACKING_DIRECTORY):
+    try:
 
-        os.makedirs(BALL_TRACKING_DIRECTORY, exist_ok=True)
+        VIDEO_PATH = Path(os.path.join(INPUT_PATH, f"{VIDEO_FILENAME}.mp4"))
+        if not os.path.isfile(VIDEO_PATH):
+            raise FileNotFoundError("Could not find file: %s", VIDEO_PATH)
 
-    bounce_detection_dict, fps = predict(
-        video_path=VIDEO_PATH,
-        OUTPUT_DIR=OUTPUT_PATH,
-        MODEL_PATH=MODEL_PATH,
-        STATUS_PATH=STATUS_PATH,
-        api_key=ROBOFLOW_API_KEY, 
-    )
+        if not os.path.isdir(BALL_TRACKING_DIRECTORY):
+
+            os.makedirs(BALL_TRACKING_DIRECTORY, exist_ok=True)
+
+        bounce_detection_dict, fps = predict(
+            video_path=VIDEO_PATH,
+            OUTPUT_DIR=OUTPUT_PATH,
+            MODEL_PATH=MODEL_PATH,
+            STATUS_PATH=STATUS_PATH,
+            api_key=ROBOFLOW_API_KEY, 
+        )
+
+    except Exception:
+        
+        logger.exception("job %s failed", JOB_ID)
+        update_status(
+            status_file=STATUS_PATH, 
+            status="failed",
+            stage="Could not process video", 
+            current_frame=0, 
+            total_frames=1
+        )
+        raise
 
     results = {
         "ok": True,

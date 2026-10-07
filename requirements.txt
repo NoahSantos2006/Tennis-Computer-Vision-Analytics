@@ -7,3 +7,4 @@ scikit-learn==1.7.2
 fastapi==0.141.1
 uvicorn
 python-multipart
+modal==1.6.1

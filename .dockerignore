@@ -1,0 +1,13 @@
+.git
+.github
+.venv
+**/__pycache__
+.env
+.env.*
+frontend
+storage
+tests
+docs
+input
+output
+*.mp4

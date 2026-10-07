@@ -36,11 +36,11 @@ def run_job(job_id: str, filename: str, video_bytes: bytes) -> dict:
     (input_dir / filename).write_bytes(video_bytes)
 
     analyze_video(
-        VIDEO_FILENAME=filename.rsplit(".", 1)[0],
+        VIDEO_FILENAME=filename.split(".", 1)[0],
         INPUT_PATH=input_dir,
         OUTPUT_PATH=output_dir,
         JOB_ID=job_id,
-        MODEL_PATH=Path(os.path.join("root", "backend", "models", "model.ubj")),
+        MODEL_PATH=Path("/root/backend/models/model.ubj"),
     )
 
     return json.loads((root / "results.json").read_text())

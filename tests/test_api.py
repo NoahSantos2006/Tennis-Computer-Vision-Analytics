@@ -6,6 +6,7 @@ the ball by finding the white blob in each frame.
 """
 import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import cv2
 import numpy as np
@@ -86,10 +87,55 @@ def jobs_dir(tmp_path, monkeypatch):
     return jobs
 
 
+class FakeModalCall:
+    """Stands in for the modal.FunctionCall that run_job.spawn returns."""
+
+    finished = {}  # call id -> results dict
+
+    def __init__(self, call_id):
+        self.object_id = call_id
+
+    @classmethod
+    def from_id(cls, call_id):
+        return cls(call_id)
+
+    def get(self, timeout=None):
+        return FakeModalCall.finished[self.object_id]
+
+
+class FakeRunJob:
+    """Runs the job right here instead of on Modal, writing into the test's jobs folder."""
+
+    def __init__(self, jobs_dir):
+        self.jobs_dir = jobs_dir
+        self.spawn = SimpleNamespace(aio=self._spawn)
+
+    async def _spawn(self, job_id, filename, video_bytes):
+        job_dir = self.jobs_dir / job_id
+        input_dir, output_dir = job_dir / "input", job_dir / "output"
+        input_dir.mkdir(parents=True, exist_ok=True)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        (input_dir / filename).write_bytes(video_bytes)
+
+        predict.analyze_video(
+            VIDEO_FILENAME=filename.rsplit(".", 1)[0],
+            INPUT_PATH=input_dir,
+            OUTPUT_PATH=output_dir,
+            JOB_ID=job_id,
+            MODEL_PATH=main.MODEL_PATH,
+        )
+        call_id = f"fc-{job_id}"
+        FakeModalCall.finished[call_id] = json.loads((job_dir / "results.json").read_text())
+        return FakeModalCall(call_id)
+
+
 @pytest.fixture
 def client(jobs_dir, monkeypatch):
     FakeRoboflow.calls = []
     monkeypatch.setattr(predict, "InferenceHTTPClient", FakeRoboflow)
+    # Never call the real Modal from tests: run the job locally instead.
+    monkeypatch.setattr(main, "run_job", FakeRunJob(jobs_dir))
+    monkeypatch.setattr(main.modal, "FunctionCall", FakeModalCall)
     # No `with` block: skips the lifespan, so the job sweeper doesn't run.
     return TestClient(main.app)
 

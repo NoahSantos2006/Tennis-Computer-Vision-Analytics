@@ -5,14 +5,13 @@ import numpy as np
 from pathlib import Path
 import pickle
 from concurrent.futures import ThreadPoolExecutor, wait, FIRST_COMPLETED
+import logging
 
 import xgboost as xgb
 
 from dotenv import load_dotenv
 import os
 import time, random
-
-import threading
 
 from inference_sdk import InferenceHTTPClient
 from inference_sdk.http.errors import HTTPCallErrorError, HTTPClientError
@@ -107,24 +106,15 @@ def predict(
                     )[0]
                     break
 
-                except HTTPCallErrorError as e:
-
-                    delay = min(2 ** attempt, 30) + random.random()
-
-                    print(
-                        f" Roboflow request failed. "
-                        f"Retrying in {delay}s (on attempt {attempt}) "
-                    )
-                    time.sleep(delay)
-
                 except HTTPClientError as e:
 
                     delay = min(2 ** attempt, 30) + random.random()
                     
-                    print(
-                        f" Too many requests. "
-                        f"Retrying in {delay}s (on attempt {attempt}) "
+                    logging.warning(
+                        " Roboflow request failed. "
+                        "Retrying in %ds (on attempt %d)", delay, attempt
                     )
+
                     time.sleep(delay)
 
         else:
@@ -140,23 +130,13 @@ def predict(
                     )[0]
                     break
 
-                except HTTPCallErrorError as e:
-
-                    delay = min(2 ** attempt, 30) + random.random()
-
-                    print(
-                        f" Roboflow request failed. "
-                        f"Retrying in {delay}s (on attempt {attempt}) "
-                    )
-                    time.sleep(delay)
-
                 except HTTPClientError as e:
 
                     delay = min(2 ** attempt, 30) + random.random()
                     
-                    print(
-                        f" Too many requests. "
-                        f"Retrying in {delay}s (on attempt {attempt}) "
+                    logging.warning(
+                        " Roboflow request failed. "
+                        "Retrying in %ds (on attempt %d)", delay, attempt
                     )
                     time.sleep(delay)
         
@@ -241,7 +221,7 @@ def predict(
                 try:
                     result_frame_id, preds = future.result()
                 except Exception as e:
-                    print(f"frame failed: {e}")
+                    logging.error("frame failed: %s", e)
                     continue
                 
                 if preds is None:
@@ -346,6 +326,8 @@ def predict(
     )
 
     end = time.time()
+
+    logging.info
 
     print(f"For a {total_frames / fps} second video using {MAX_WORKERS} max workers it took {end - start:.2f}seconds ({VIDEO_FILENAME}.mp4)")
 

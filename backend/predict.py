@@ -153,7 +153,7 @@ def predict(
                         "Retrying in %.1fs",
                         frame_id, attempt + 1, e, delay
                     )
-                    
+
                     time.sleep(delay)
         
         if not data:
@@ -357,7 +357,7 @@ def predict(
     end = time.time()
     elapsed = np.round(end - start, 2)
 
-    logging.info("For a %lf second video using %d max workers it took %lf seconds (%s.mp4)", video_duration, MAX_WORKERS, elapsed, VIDEO_FILENAME)
+    logger.info("For a %lf second video using %d max workers it took %lf seconds (%s.mp4)", video_duration, MAX_WORKERS, elapsed, VIDEO_FILENAME)
 
     return bounce_detection_dict, fps
 

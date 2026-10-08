@@ -3,8 +3,6 @@ dotenv==0.9.9
 xgboost==3.2.0
 pandas==2.3.3
 scikit-learn==1.7.2
-opencv-python-headless
-numpy
 
 fastapi==0.141.1
 uvicorn

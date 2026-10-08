@@ -2,20 +2,26 @@ import asyncio, shutil, time
 from pathlib import Path
 import os
 from dotenv import load_dotenv
+import logging
+
+from backend.scripts.status import progress
 
 load_dotenv()
 
 MAX_AGE = int(os.getenv("MAX_AGE"))
 CHECK_EVERY = int(os.getenv("CHECK_EVERY"))
 
+
+logger = logging.getLogger(__name__)   
+
 def sweep_once(JOBS_DIR: Path):
     cutoff = time.time() - MAX_AGE
-    for job_id in JOBS_DIR.iterdir():
+    for job_dir in JOBS_DIR.iterdir():
 
-        results_path = JOBS_DIR / job_id / "results.json"
-
-        if results_path.is_file() and results_path.stat().st_mtime < cutoff:
-            shutil.rmtree(job_id, ignore_errors=True)
+        marker = job_dir / "call_id.txt"
+        if marker.is_file() and marker.stat().st_mtime < cutoff:
+            shutil.rmtree(job_dir, ignore_errors=True)
+            progress.pop(job_dir.name, None)   # also clear its status from the Dict
 
 async def sweeper_loop(JOBS_DIR: Path):
     while True:

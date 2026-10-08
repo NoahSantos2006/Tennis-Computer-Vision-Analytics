@@ -110,12 +110,19 @@ def predict(
 
                 except HTTPClientError as e:
 
+                    if attempt == MAX_ATTEMPTS - 1:
+
+                        logger.error("Roboflow failed on frame %d after %d attempts: %s",frame_id, MAX_ATTEMPTS, e)
+                        break
+
                     delay = min(2 ** attempt, 30) + random.random()
                     
-                    logging.warning(
-                        " Roboflow request failed. "
-                        "Retrying in %ds (on attempt %d)", delay, attempt
+                    logger.warning(                                    
+                        "Roboflow request failed on frame %d (attempt %d): %s. "
+                        "Retrying in %.1fs",
+                        frame_id, attempt + 1, e, delay
                     )
+
 
                     time.sleep(delay)
 
@@ -134,12 +141,19 @@ def predict(
 
                 except HTTPClientError as e:
 
+                    if attempt == MAX_ATTEMPTS - 1:
+                    
+                        logger.error("Roboflow failed on frame %d after %d attempts: %s",frame_id, MAX_ATTEMPTS, e)
+                        break
+
                     delay = min(2 ** attempt, 30) + random.random()
                     
-                    logging.warning(
-                        " Roboflow request failed. "
-                        "Retrying in %ds (on attempt %d)", delay, attempt
+                    logger.warning(                                    
+                        "Roboflow request failed on frame %d (attempt %d): %s. "
+                        "Retrying in %.1fs",
+                        frame_id, attempt + 1, e, delay
                     )
+                    
                     time.sleep(delay)
         
         if not data:

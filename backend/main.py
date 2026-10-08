@@ -143,10 +143,10 @@ def get_job_status(job_id: str):
     if status is None:
         return {
             "status": "queued", 
-            "stage": "starting", 
+            "stage": "Starting", 
             "progress": 0,
             "current frame": 0, 
-            "total frames": 1
+            "total frames": 0
         }
     
     return status

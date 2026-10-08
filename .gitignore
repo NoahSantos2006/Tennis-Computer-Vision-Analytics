@@ -1,6 +1,7 @@
 # Python
 .venv/
 __pycache__/
+.pytest_cache/
 testing.py
 print_memory.py
 .vscode/

@@ -27,7 +27,11 @@ logger = logging.getLogger(__name__)
     secrets=[modal.Secret.from_name("tennis-cv-analytics-env")],  # your .env values
 )
 def run_job(job_id: str, filename: str, video_bytes: bytes) -> dict:
-    
+
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+    )
     from backend.predict import analyze_video
 
     root = Path("/tmp/jobs") / job_id

@@ -23,8 +23,12 @@ os.makedirs(JOBS_DIR, exist_ok=True)
 MODEL_PATH = PROJECT_ROOT / "backend" / "models" / "model.ubj"
 
 run_job = modal.Function.from_name("tennis-cv-analytics", "run_job")
-progress = modal.Dict.from_name("tennis-cv-analytics-progress")
+progress = modal.Dict.from_name("tennis-cv-analytics-progress", create_if_missing=True)
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 logger = logging.getLogger(__name__)
 
 def save_call_id(job_id: str, call_id: str):
@@ -93,7 +97,7 @@ async def analyze(
         logger.exception("Failed to start job %s for %s", job_id, video.filename)
 
         raise HTTPException(
-            status_code=404,
+            status_code=500,
             detail="Analysis of video failed."
         )
 
@@ -153,7 +157,19 @@ def get_results(job_id: str):
     call = modal.FunctionCall.from_id(read_call_id(job_id))
 
     try:
+
         return call.get(timeout=0)
+    
     except TimeoutError:
-        raise HTTPException(status_code=202, detail="Still Running")
+
+        raise HTTPException(
+            status_code=202, 
+            detail="Still Running"
+        )
+    
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail="Job failed"
+        )
 
